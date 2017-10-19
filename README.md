@@ -6,7 +6,7 @@ This is a Linux command line tool that enables you to link GitLab issues to Git 
 
 Why is this important? Isn't it sufficient to handle issues in topic branches and merge them into the master branch?
 
-Well, Git branches are ephemeral, they're just a pointer into the Git repository. They're just meta-data. They are prone to being moved around and they may be removed at some point the future. Compared to branches, commit messages remain in the Git repository and can't be removed or changed since they're part of the SHA1 sum used for identifying objects in Git.
+Well, Git branches are ephemeral, they're just a pointer into the Git repository. They're just meta-data. They are prone to being moved around and from the perspective of Git, it would be perfectly fine if some branches were entirely removed at some point the future. Compared to branches, commit messages remain in the Git repository and can't be removed or changed since they're part of the SHA1 sum used for identifying objects in Git.
 
 So after all the work on an issue has been merged into master, there is no way to tell what issue a commit was dealing with if it's not recorded in the commit object, and this is why gl prepends every commit message with an issue ID surrounded by square brackets.
 
