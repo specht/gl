@@ -28,6 +28,8 @@ class GitLabIssuesConnectedToGit
         unless File::exists?(@hook_path)
             unless ARGV.first == 'init'
                 STDERR.puts "Error: project not initialized. Please run 'gl init'."
+                STDERR.puts "If you're just installing gl on your machine, you might want to create the following symlink:"
+                STDERR.puts "$ sudo ln -s #{File::expand_path(__FILE__)} /usr/local/bin/gl"
                 exit(1)
             end
         end
