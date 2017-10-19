@@ -1,25 +1,12 @@
 #!/usr/bin/env ruby
 
+require 'fileutils'
 require 'json'
 require 'yaml'
-require 'paint'
+require 'uri'
 
 class GitLabIssuesConnectedToGit
-    def initialize()
-        if ENV['COMP_LINE']
-            parts = ENV['COMP_LINE'].split(' ')
-            parts << '' if ENV['COMP_LINE'][-1] == ' '
-            parts.shift()
-            if parts.size == 1
-                ['init', 'update', 'list', 'show', 'branch'].each do |w|
-                    if w.index(parts.last) == 0
-                        puts w
-                    end
-                end
-            end
-            exit(0)
-        end
-
+    def setup(interactive)
         @project_root = Dir::pwd
         while !File::directory?(File::join(@project_root, '.git'))
             @project_root = File.expand_path('..', @project_root)
@@ -36,14 +23,106 @@ class GitLabIssuesConnectedToGit
         @project_uri_path = File::join(@project_root, 'project_uri')
         @private_token_path = File::join(@project_root, 'private_token')
         @issues_path = File::join(@project_root, 'issues.yaml')
+        @hook_path = File::join(@project_root, '..', '.git', 'hooks', 'prepare-commit-msg')
+        
+        unless File::exists?(@hook_path)
+            unless ARGV.first == 'init'
+                STDERR.puts "Error: project not initialized. Please run 'gl init'."
+                exit(1)
+            end
+        end
 
-        @project_uri = File::read(@project_uri_path).strip
-        @token = File::read(@private_token_path).strip
+        if File::exists?(@project_uri_path)
+            @project_uri = File::read(@project_uri_path).strip
+        else
+            STDERR.puts "Error: no project URI defined."
+            STDERR.puts "This only has to be done once and you should only see this if you're the project maintainer."
+            STDERR.puts "Go to the project page and enter the URL shown in your browser's address bar."
+            STDERR.puts
+            STDERR.print "Project URL: "
+            uri = STDIN.readline.strip
+            STDERR.puts
+            u = URI::parse(uri)
+            @project_uri = "#{u.scheme}://#{u.host}/api/v4/projects/#{u.path.split('/').select { |x| !x.empty? }.join('%2f')}"
+            STDERR.puts "I've derived the following project URI from what you've just entered:"
+            STDERR.puts @project_uri
+            STDERR.puts
+            STDERR.puts "If you need to correct this, please edit .gl/project_uri - this is where the project URI is stored."
+            STDERR.puts "Please add and commit .gl/project_uri so that other developers won't have to repeat this step:"
+            STDERR.puts
+            STDERR.puts "$ git add .gl/project_uri"
+            STDERR.puts "$ git commit -m 'added .gl/project_uri'"
+            
+            FileUtils::mkpath(File::dirname(@project_uri_path))
+            File::open(@project_uri_path, 'w') do |f|
+                f.write(@project_uri)
+            end
+        end
+        if File::exists?(@private_token_path)
+            @token = File::read(@private_token_path).strip
+        else
+            STDERR.puts "Error: no private token stored for GitLab API access."
+            STDERR.puts "Please log into GitLab and create a Personal Access Token:"
+            u = URI::parse(@project_uri)
+            STDERR.puts
+            STDERR.puts "#{u.scheme}://#{u.host}/profile/personal_access_tokens"
+            STDERR.puts
+            STDERR.puts "Make sure you check the 'api' checkbox!"
+            STDERR.puts "When you're done, paste the token here:"
+            STDERR.puts
+            STDERR.print "Token: "
+            @token = STDIN.readline.strip
+            FileUtils::mkpath(File::dirname(@private_token_path))
+            File::open(@private_token_path, 'w') do |f|
+                f.write(@token)
+            end
+        end
+    end
+    
+    def initialize()
+        if ENV['COMP_LINE']
+            parts = ENV['COMP_LINE'].split(' ')
+            parts << '' if ENV['COMP_LINE'][-1] == ' '
+            parts.shift()
+            if parts.size == 1
+                ['init', 'update', 'list', 'show', 'branch'].each do |w|
+                    if w.index(parts.last) == 0
+                        puts w
+                    end
+                end
+            elsif parts.first == 'branch'
+                setup(false)
+                update() unless File::exists?(@issues_path)
+                issues = YAML::load(File::read(@issues_path))
+                issues.each_pair do |id, issue|
+                    branch_name = "#{id}-#{issue[:slug]}"
+                    search_terms = parts[1, parts.size - 1]
+                    left_over_search_terms = search_terms.reject do |term|
+                        term = term.downcase
+                        issue[:slug].split('-').any? do |x|
+                            x.downcase[0, term.size] == term
+                        end
+                    end
+                    if left_over_search_terms.empty?
+                        puts branch_name
+                    else
+                        if branch_name.index(search_terms.first.downcase) == 0
+                            if branch_name != search_terms.first
+                                puts branch_name
+                            end
+                        end
+                    end
+                end
+            end
+            exit(0)
+        end
+        
+        setup(true)
     end
     
     def init()
-        hook_path = File::join(@project_root, '..', '.git', 'hooks', 'prepare-commit-msg')
-        File::open(hook_path, 'w') do |f|
+        FileUtils::mkpath(File::dirname(@hook_path))
+        File::open(@hook_path, 'w') do |f|
             f.write <<~eos
                 #!/usr/bin/env ruby
 
@@ -58,7 +137,7 @@ class GitLabIssuesConnectedToGit
                 end
             eos
         end
-        system("chmod +x \'#{hook_path}\'")
+        system("chmod +x \'#{@hook_path}\'")
         STDERR.puts "Successfully installed Git prepare-commit-msg hook."
     end
     
@@ -98,7 +177,7 @@ class GitLabIssuesConnectedToGit
         id_width = issues.keys.max.to_s.size
         issues.keys.sort.each do |id|
             if issues[id][:entry]['state'] == 'opened'
-                print Paint[sprintf("%-#{id_width}s", "[#{id}]"), :green]
+                print sprintf("%-#{id_width}s", "[#{id}]")
                 print ' '
                 print sprintf('%s', issues[id][:entry]['title'])
                 puts
@@ -178,6 +257,11 @@ class GitLabIssuesConnectedToGit
             commit_message()
         else
             puts "Usage: gl <init|update|list|branch>"
+            puts "  init        - set up git hook"
+            puts "  update      - fetch issues from GitLab server"
+            puts "  list        - list all open issues"
+            puts "  branch <id> - checkout a topic branch for the given issue"
+            puts "  show <id>   - show issue"
         end
     end
 end
