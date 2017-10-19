@@ -36,7 +36,12 @@ Well, Git branches are ephemeral, they're just a pointer into the Git repository
 
 So after all the work on an issue has been merged into master, there is no way to tell what issue a commit was dealing with if it's not recorded in the commit object, and this is why gl prepends every commit message with an issue ID surrounded by square brackets.
 
-## Tab completion
+
+## Installation
+
+Clone the repository, run ./gl and follow the instructions to create a symlink. You may also want to setup Tab completion for BASH:
+
+### Tab completion
 
 If you're not into numbers as issue identifiers, feel free to enable BASH tab completion for gl by adding this line to your `~/.bashrc`:
 
