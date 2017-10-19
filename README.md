@@ -2,7 +2,7 @@
 
 ## Motivation
 
-This is a Linux command line tool that enabled you to link GitLab issues to Git commits. It does so by automatically preparing a commit message every time a commit is performed via a Git hook called `prepare-commit-msg`.
+This is a Linux command line tool that enables you to link GitLab issues to Git commits. It does so by automatically preparing a commit message every time a commit is performed via a Git hook called `prepare-commit-msg`.
 
 Why is this important? Isn't it sufficient to handle issues in topic branches and merge them into the master branch?
 
