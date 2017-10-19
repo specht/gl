@@ -220,7 +220,7 @@ class GitLabIssuesConnectedToGit
         if issues.include?(id)
             branch_name = "#{id}-#{issues[id][:slug]}"
             system("git branch #{branch_name} 2> /dev/null")
-            system("git checkout #{branch_name} 2> /dev/null")
+            system("git checkout #{branch_name}")
         else
             STDERR.puts "Error: no issue found with id #{id}."
         end
