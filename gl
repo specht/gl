@@ -92,7 +92,7 @@ class GitLabIssuesConnectedToGit
                         puts w
                     end
                 end
-            elsif parts.first == 'branch'
+            elsif ['branch', 'show'].include?(parts.first)
                 setup(false)
                 update() unless File::exists?(@issues_path)
                 issues = YAML::load(File::read(@issues_path))
