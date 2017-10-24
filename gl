@@ -235,7 +235,7 @@ class GitLabIssuesConnectedToGit
         end.first.sub('*', '').strip.split('-').first.to_i
         issues = YAML::load(File::read(@issues_path))
         if issues.include?(id)
-            puts "[#{id}] #{issues[id][:entry]['title']}"
+            puts "[##{id}] #{issues[id][:entry]['title']}"
         else
             STDERR.puts "Error: no issue found with id #{id}."
         end
