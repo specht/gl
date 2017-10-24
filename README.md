@@ -40,7 +40,10 @@ Detailed explanations go here...
 
 ## Installation
 
-Clone the repository, run ./gl and follow the instructions to create a symlink. You may also want to setup Tab completion for BASH.
+# Install ActiveSupport: `gem install activesupport`
+# Clone the repository
+# Run ./gl and follow the instructions to create a symlink. 
+# You may also want to setup Tab completion for BASH: `complete -C gl -o default gl`
 
 ### Tab completion
 
