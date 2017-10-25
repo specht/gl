@@ -5,6 +5,7 @@ require 'json'
 require 'yaml'
 require 'uri'
 require 'active_support/all'
+require 'open3'
 
 class GitLabIssuesConnectedToGit
     def initialize()
@@ -161,7 +162,7 @@ class GitLabIssuesConnectedToGit
     end
     
     def update()
-        command = "curl -s --header 'PRIVATE-TOKEN: #{@token}' #{@project_uri}/issues"
+        command = "curl -sS --header 'PRIVATE-TOKEN: #{@token}' #{@project_uri}/issues"
         thread = Thread.new do
             while true do
                 ['|', '/', '-', '\\'].each do |c|
@@ -171,18 +172,32 @@ class GitLabIssuesConnectedToGit
             end
         end
         thread.run
-        data = JSON.parse(`#{command}`)
+        
+        stdin, stdout, stderr, thread = Open3::popen3(command)
+        stdin.close
+        exit_code = thread.value
+        thread.kill
+        STDERR.print "\r"
+        data = nil
+        if exit_code == 0
+            data = JSON::parse(stdout.read)
+        else
+            STDERR.puts stderr.read
+            exit(1)
+        end
+        stdout.close
+        stderr.close
+
         issues = {}
         data.each do |entry|
             issues[entry['iid']] = entry
         end
-        thread.kill
         issues_by_status = {}
         issues.values.each do |issue|
             issues_by_status[issue['state']] ||= 0
             issues_by_status[issue['state']] += 1
         end
-        STDERR.puts "\rFetched #{issues.size} issues (#{issues_by_status.keys.sort.reverse.map { |x| "#{issues_by_status[x]} #{x}" }.join(', ')})."
+        STDERR.puts "Fetched #{issues.size} issues (#{issues_by_status.keys.sort.reverse.map { |x| "#{issues_by_status[x]} #{x}" }.join(', ')})."
         File::open(@issues_path, 'w') do |f|
             f.write issues.to_yaml
         end
@@ -268,7 +283,9 @@ class GitLabIssuesConnectedToGit
     def commit_message()
         update() unless File::exists?(@issues_path)
         id = nil
-        id ||= ENV['GL_COMMIT_USING_ISSUE'].to_i
+        if ENV.include?('GL_COMMIT_USING_ISSUE')
+            id ||= ENV['GL_COMMIT_USING_ISSUE'].to_i
+        end
         id ||= current_issue
         if id 
             if @issues.include?(id)
