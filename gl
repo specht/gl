@@ -232,7 +232,9 @@ class GitLabIssuesConnectedToGit
             puts "Labels:   #{issue['labels'].empty? ? '(none)' : issue['labels'].join(', ')}"
             puts "State:    #{issue['state']}"
             puts "Created:  #{issue['created_at'][0, 10]}"
-            puts "Assigned: #{issue['assignee']['name']}"
+            if issue['assignee']
+                puts "Assigned: #{issue['assignee']['name']}"
+            end
             if issue['due_date']
                 duration = (DateTime.parse(issue['due_date']) - DateTime.now).to_i
                 if duration < 7

@@ -12,12 +12,55 @@ So after all the work on an issue has been merged into master, there is no way t
 
 ### Quick showcase
 
-Let's assume we have the following issue: #4 (Demo bug). 
+Let's assume we have the following issue in the GitLab tracker: #4 (Demo bug). 
 
-When you start working on the issue, create a topic branch:
+First, fetch the current issues from the server (try the tab completion, it's pretty useful):
 
 ```
-$ gl branch 4
+$ gl update 
+Fetched 5 issues (5 opened).
+```
+
+Every now and then, you should re-fetch issues from the GitLab server using `gl update`. All other operations are local operations and don't use the network. 
+
+Let's have a look at the issues:
+
+```
+$ gl list
+[#1] Basic development
+[#2] Documentation
+[#3] Add tab completion
+[#4] Demo bug
+[#5] .gl config file handling
+```
+
+Say we're interested in [#4] Demo Bug, let's have a look at the details:
+
+```
+$ gl show demo[TAB]
+```
+
+...which, if you've set up tab completion, will be completed to:
+
+```
+$ gl show 4-demo-bug
+---------------------------------------------------------------------------
+[#4] Demo bug
+---------------------------------------------------------------------------
+Labels:   Bug
+State:    opened
+Created:  2017-10-19
+URL:      https://ribogit.izi.fraunhofer.de/michael.specht/gl/issues/4
+
+A strange thing happened...
+
+*Except it didn't. For this is just a demo bug!*
+```
+
+Let's start working on the issue:
+
+```
+$ gl start 4-demo-bug
 Switched to branch '4-demo-bug'
 ```
 
@@ -30,7 +73,7 @@ $ git commit
 Now the commit message will look like this and you're free to append any comments after leaving a blank line:
 
 ```
-[4] Demo bug
+[#4] Demo bug
 
 Detailed explanations go here...
 # Please enter the commit message for your changes. Lines starting
@@ -42,31 +85,5 @@ Detailed explanations go here...
 
 - Install ActiveSupport: `gem install activesupport`
 - Clone the repository
-- Run ./gl and follow the instructions to create a symlink. 
+- Run ./gl and follow the instructions to create a symlink.
 - You may also want to setup Tab completion for BASH: `complete -C gl -o default gl`
-
-### Tab completion
-
-If you're not into numbers as issue identifiers, feel free to enable BASH tab completion for gl by adding this line to your `~/.bashrc`:
-
-```
-complete -C gl -o default gl
-```
-
-Now you can switch branches using keywords from the issue titles:
-
-```
-$ gl branch dem[TAB]
-```
-
-will be expanded to:
-
-```
-$ gl branch 4-demo-bug
-```
-
-## Usage
-
-Every now and then, you should re-fetch issues from the GitLab server using `gl update`. All other operations are local operations and don't use the network.
-
-Show all open issues using `gl list`, show a specific issue using `gl show <id>`, and that's about it.
