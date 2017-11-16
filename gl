@@ -6,6 +6,7 @@ require 'yaml'
 require 'uri'
 require 'active_support/all'
 require 'open3'
+require 'tempfile'
 
 class GitLabIssuesConnectedToGit
     def initialize()
@@ -161,8 +162,52 @@ class GitLabIssuesConnectedToGit
         STDERR.puts "Successfully installed Git prepare-commit-msg hook."
     end
     
+    def curl_gitlab(url)
+        page = 1
+        data = nil
+        loop do
+            header_path = Dir::Tmpname.create('gl-curl-response-headers') {}
+            command = "curl -D \"#{header_path}\" -sS --header 'PRIVATE-TOKEN: #{@token}' #{@project_uri}/#{url}/?page=#{page}"
+            stdin, stdout, stderr, thread = Open3::popen3(command)
+            stdin.close
+            exit_code = thread.value
+            if exit_code == 0
+                body = stdout.read
+                new_data = JSON::parse(body)
+                if data.nil?
+                    data = new_data
+                else
+                    data += new_data
+                end
+            else
+                STDERR.print "\r"
+                STDERR.puts stderr.read
+                exit(1)
+            end
+            stdout.close
+            stderr.close
+            headers = {}
+            File::read(header_path).split("\n").each do |x|
+                colon_index = x.index(':')
+                next unless colon_index
+                key = x[0, colon_index].strip
+                value = x[colon_index + 1, x.size].strip
+                headers[key] = value
+            end
+            if headers['X-Page']
+                if headers['X-Page'].to_i < headers['X-Total-Pages'].to_i
+                    page += 1
+                else
+                    break
+                end
+            else
+                break
+            end
+        end
+        data
+    end
+    
     def update()
-        command = "curl -sS --header 'PRIVATE-TOKEN: #{@token}' #{@project_uri}/issues"
         thread = Thread.new do
             while true do
                 ['|', '/', '-', '\\'].each do |c|
@@ -173,23 +218,8 @@ class GitLabIssuesConnectedToGit
         end
         thread.run
         
-        stdin, stdout, stderr, thread = Open3::popen3(command)
-        stdin.close
-        exit_code = thread.value
-        thread.kill
-        STDERR.print "\r"
-        data = nil
-        if exit_code == 0
-            data = JSON::parse(stdout.read)
-        else
-            STDERR.puts stderr.read
-            exit(1)
-        end
-        stdout.close
-        stderr.close
-
         issues = {}
-        data.each do |entry|
+        curl_gitlab('issues').each do |entry|
             issues[entry['iid']] = entry
         end
         issues_by_status = {}
@@ -197,6 +227,10 @@ class GitLabIssuesConnectedToGit
             issues_by_status[issue['state']] ||= 0
             issues_by_status[issue['state']] += 1
         end
+        
+        thread.kill
+        STDERR.print "\r"
+
         STDERR.puts "Fetched #{issues.size} issues (#{issues_by_status.keys.sort.reverse.map { |x| "#{issues_by_status[x]} #{x}" }.join(', ')})."
         File::open(@issues_path, 'w') do |f|
             f.write issues.to_yaml
@@ -263,6 +297,15 @@ class GitLabIssuesConnectedToGit
             branch_name = "#{id}-#{@issues[id]['title'].parameterize}"
             system("git branch #{branch_name} 2> /dev/null")
             system("git checkout #{branch_name}")
+            merged_branches = `git branch --merged #{branch_name}`.split.map do |x|
+                x.strip
+            end
+            if merged_branches.include?('master')
+                puts "Branch is up-to-date with master."
+            else
+                puts "Branch is not up-to-date with master, please run:"
+                puts "$ git merge master"
+            end
         else
             STDERR.puts "Error: no issue found with id #{id}."
         end
