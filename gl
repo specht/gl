@@ -167,7 +167,7 @@ class GitLabIssuesConnectedToGit
         data = nil
         loop do
             header_path = Dir::Tmpname.create('gl-curl-response-headers') {}
-            command = "curl -D \"#{header_path}\" -sS --header 'PRIVATE-TOKEN: #{@token}' #{@project_uri}/#{url}/?page=#{page}"
+            command = "curl -D \"#{header_path}\" -sS --header 'PRIVATE-TOKEN: #{@token}' #{@project_uri}/#{url}/?per_page=100&page=#{page}"
             stdin, stdout, stderr, thread = Open3::popen3(command)
             stdin.close
             exit_code = thread.value
