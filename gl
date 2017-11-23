@@ -15,7 +15,7 @@ class GitLabIssuesConnectedToGit
             parts << '' if ENV['COMP_LINE'][-1] == ' '
             parts.shift()
             if parts.size == 1
-                ['init', 'update', 'list', 'show', 'start', 'commit'].each do |w|
+                ['init', 'update', 'list', 'show', 'start', 'commit', 'labels'].each do |w|
                     if w.index(parts.last) == 0
                         puts w
                     end
@@ -42,6 +42,28 @@ class GitLabIssuesConnectedToGit
                         if branch_name.index(search_terms.first.downcase) == 0
                             if branch_name != search_terms.first
                                 puts branch_name
+                            end
+                        end
+                    end
+                end
+            elsif ['list'].include?(parts.first)
+                setup(false)
+                update() unless File::exists?(@issues_path)
+                collect_labels().each do |label|
+                    slug = label.parameterize
+                    search_terms = parts[1, parts.size - 1]
+                    left_over_search_terms = search_terms.reject do |term|
+                        term = term.downcase
+                        slug.split('-').any? do |x|
+                            x.downcase[0, term.size] == term
+                        end || slug[0, term.size] == term
+                    end
+                    if left_over_search_terms.empty?
+                        puts slug
+                    else
+                        if slug.index(search_terms.first.downcase) == 0
+                            if slug != search_terms.first
+                                puts slug
                             end
                         end
                     end
@@ -240,12 +262,20 @@ class GitLabIssuesConnectedToGit
         # TODO: update branch names
     end
     
-    def list()
+    def list(label = nil)
         id_width = @issues.keys.max.to_s.size
         @issues.keys.sort.each do |id|
             if @issues[id]['state'] == 'opened'
+                unless label.nil?
+                    next unless @issues[id]['labels'].map { |x| x.parameterize }.include?(label)
+                end
+#                 color = :green
+#                 if @issues[id]['labels'].include?('Recurring')
+#                     color = :yellow
+#                 end
                 print "[##{id}]#{' ' * (id_width - id.to_s.size)} #{@issues[id]['title']}"
                 puts
+#                 puts "#{' ' * id_width}    #{@issues[id]['labels'].sort.join(' / ')}"
             end
         end
     end
@@ -342,7 +372,23 @@ class GitLabIssuesConnectedToGit
             puts "# You're not in a topic branch. :-("
         end
     end
+    
+    def collect_labels()
+        if @all_labels.nil?
+            @all_labels = Set.new()
+            @issues.values.each do |issue|
+                @all_labels |= Set.new(issue['labels'])
+            end
+        end
+        @all_labels
+    end
             
+    def labels()
+        collect_labels().sort.each do |label|
+            puts label
+        end
+    end
+    
     def run()
         args = ARGV
         command = args.first
@@ -352,7 +398,7 @@ class GitLabIssuesConnectedToGit
         when 'update'
             update()
         when 'list'
-            list()
+            list(args[1])
         when 'start'
             start(args[1].nil? ? nil : args[1].to_i)
         when 'commit'
@@ -361,14 +407,17 @@ class GitLabIssuesConnectedToGit
             show(args[1].nil? ? nil : args[1].to_i)
         when 'commit-message'
             commit_message()
+        when 'labels'
+            labels()
         else
             puts "Usage: gl <init|update|list|start|commit>"
-            puts "  init        - set up git hook"
-            puts "  update      - fetch issues from GitLab server"
-            puts "  list        - list all open issues"
-            puts "  start <id>  - start a topic branch for the given issue"
-            puts "  commit <id> - commit for an issue from any branch"
-            puts "  show <id>   - show issue"
+            puts "  init           - set up git hook"
+            puts "  update         - fetch issues from GitLab server"
+            puts "  list [<label>] - list all open issues (with label if specified)"
+            puts "  start <id>     - start a topic branch for the given issue"
+            puts "  commit <id>    - commit for an issue from any branch"
+            puts "  show <id>      - show issue"
+            puts "  labels         - show labels"
         end
     end
 end
