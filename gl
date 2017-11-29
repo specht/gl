@@ -166,19 +166,7 @@ class GitLabIssuesConnectedToGit
     def init()
         FileUtils::mkpath(File::dirname(@hook_path))
         File::open(@hook_path, 'w') do |f|
-            f.write <<~eos
-                #!/usr/bin/env ruby
-            
-                template = File::read(ARGV.first)
-                unless  template.index('Merge branch') == 0
-                    message = `gl commit-message`
-
-                    File::open(ARGV.first, 'w') do |f|
-                        f.puts message
-                        f.write(template)
-                    end
-                end
-            eos
+            f.write DATA.read
         end
         system("chmod +x \'#{@hook_path}\'")
         STDERR.puts "Successfully installed Git prepare-commit-msg hook."
@@ -300,13 +288,17 @@ class GitLabIssuesConnectedToGit
                 puts "Assigned: #{issue['assignee']['name']}"
             end
             if issue['due_date']
-                duration = (DateTime.parse(issue['due_date']) - DateTime.now).to_i
-                if duration < 7
-                    duration = "#{duration} days"
+                duration = (DateTime.parse(issue['due_date']) - DateTime.now).to_f.ceil
+                if duration == 0
+                    duration = "today"
+                elsif duration == 1
+                    duration = "tomorrow"
+                elsif duration < 7
+                    duration = "#{duration} days from now"
                 else
-                    duration = "#{duration / 7} weeks"
+                    duration = "#{duration / 7} weeks from now"
                 end
-                puts "Due date: #{issue['due_date'][0, 10]} (#{duration} from now)"
+                puts "Due date: #{issue['due_date'][0, 10]} (#{duration})"
             end
 #             puts "Updated:  #{issue['updated_at'][0, 10]}"
             puts "URL:      #{issue['web_url']}"
@@ -428,4 +420,17 @@ begin
     script.run
 ensure
     Dir::chdir(pwd)
+end
+
+__END__
+#!/usr/bin/env ruby
+
+template = File::read(ARGV.first)
+unless  template.index('Merge branch') == 0
+    message = `gl commit-message`
+
+    File::open(ARGV.first, 'w') do |f|
+        f.puts message
+        f.write(template)
+    end
 end
