@@ -7,7 +7,7 @@ require 'uri'
 require 'open3'
 require 'tempfile'
 
-$LOAD_PATH << File::join(File::expand_path(File::dirname(ARGV.first)), 'ext')
+$LOAD_PATH << File::join(File::expand_path(File::dirname(File::readlink($0))), 'ext')
 require 'active_support/inflector'
 
 class GitLabIssuesConnectedToGit
