@@ -418,8 +418,6 @@ class GitLabIssuesConnectedToGit
     end
 end
 
-STDERR.puts 'gl init -- fails with ArgumentError Hä'.parameterize
-
 pwd = Dir::pwd
 begin
     script = GitLabIssuesConnectedToGit.new
