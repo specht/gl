@@ -4,9 +4,11 @@ require 'fileutils'
 require 'json'
 require 'yaml'
 require 'uri'
-require 'active_support/all'
 require 'open3'
 require 'tempfile'
+
+$LOAD_PATH << File::join(File::expand_path(File::dirname(ARGV.first)), 'ext')
+require 'active_support/inflector'
 
 class GitLabIssuesConnectedToGit
     def initialize()
@@ -415,6 +417,8 @@ class GitLabIssuesConnectedToGit
         end
     end
 end
+
+STDERR.puts 'gl init -- fails with ArgumentError Hä'.parameterize
 
 pwd = Dir::pwd
 begin
