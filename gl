@@ -319,14 +319,16 @@ class GitLabIssuesConnectedToGit
             branch_name = "#{id}-#{@issues[id]['title'].parameterize}"
             system("git branch #{branch_name} 2> /dev/null")
             system("git checkout #{branch_name}")
-            merged_branches = `git branch --merged #{branch_name}`.split.map do |x|
-                x.strip
-            end
-            if merged_branches.include?('master')
-                puts "Branch is up-to-date with master."
-            else
-                puts "Branch is not up-to-date with master, please run:"
-                puts "$ git merge master"
+            if $?.success?
+                merged_branches = `git branch --merged #{branch_name}`.split.map do |x|
+                    x.strip
+                end
+                if merged_branches.include?('master')
+                    puts "Branch is up-to-date with master."
+                else
+                    puts "Branch is not up-to-date with master, please run:"
+                    puts "$ git merge master"
+                end
             end
         else
             STDERR.puts "Error: no issue found with id #{id}."
@@ -341,7 +343,7 @@ class GitLabIssuesConnectedToGit
         end
         update() unless File::exists?(@issues_path)
         if @issues.include?(id)
-            system("GL_COMMIT_USING_ISSUE=#{id} git commit #{args.join(' ')}")
+            system("GL_COMMIT_USING_ISSUE=#{id} git commit #{(args || []).join(' ')}")
         else
             STDERR.puts "Error: no issue found with id #{id}."
         end
