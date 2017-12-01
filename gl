@@ -183,7 +183,7 @@ class GitLabIssuesConnectedToGit
             
             FileUtils::mkpath(File::dirname(@config_path))
             
-            @config = {'project_uri' => @project_uri}
+            @config = {'project_uri' => @project_uri, 'max_commit_message_header_length' => nil}
             
             File::open(@config_path, 'w') do |f|
                 f.puts(@config.to_yaml)
@@ -434,7 +434,12 @@ class GitLabIssuesConnectedToGit
         id ||= current_issue
         if id 
             if @issues.include?(id)
-                puts "[##{id}] #{@issues[id]['title']}"
+                line = "[##{id}] #{@issues[id]['title']}".strip
+                max_length = @config['max_commit_message_header_length']
+                if max_length && line.size > max_length - 3
+                    line = line[0, max_length - 3] + '...'
+                end
+                puts line
             else
                 puts "# Error: no issue found with id #{id}."
             end
