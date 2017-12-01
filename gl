@@ -158,9 +158,8 @@ class GitLabIssuesConnectedToGit
         end
 
         @config_path = File::join(@project_root, 'config.yaml')
-        git_remote = `git remote -v`.lines.grep(/fetch/).grep(/\.de|\.com/)[0]
-        git_remote = git_remote.split(/\t| /)[1]
-        remote_uri = git_remote.gsub(/git@/,"https://").gsub(/com:/,"com/").gsub(/de:/,"de/").gsub(/\.git$/,"")
+        git_remote = `git remote get-url origin`.strip
+        remote_uri = "https://#{git_remote.split('@')[1].sub(':', '/').sub('.git', '')}"
         if File::exist?(@config_path)
             @config = YAML::load(File::read(@config_path))
             @project_uri = @config['project_uri']
