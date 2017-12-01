@@ -84,6 +84,16 @@ Detailed explanations go here...
 ## Installation
 
 - Install ActiveSupport: `gem install activesupport`
+- Optionally install Paint for colored output: `gem install paint`
 - Clone the repository
 - Run ./gl and follow the instructions to create a symlink.
 - You may also want to setup Tab completion for BASH: `complete -C gl -o default gl`
+
+### Shared access token
+
+If you don't want to specify an access token for every project, but want to use a default access token for all gl projects, store the token in `~/.gl_private_token`.
+
+## Under the hood
+
+Everything gl-related is stored in the `.gl` directory. If you want to remove gl from your project, just remove the directory.
+
