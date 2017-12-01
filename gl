@@ -28,7 +28,7 @@ class GitLabIssuesConnectedToGit
         end
         setup
     end
-    
+
     def handle_bash_completion
         parts = ENV['COMP_LINE'].split(' ')
         parts << '' if ENV['COMP_LINE'][-1] == ' '
@@ -94,7 +94,7 @@ class GitLabIssuesConnectedToGit
         end
         exit(0)
     end
-    
+
     def warning(&block)
         STDERR.puts Paint['-' * 75, :red]
         io = StringIO.new
@@ -103,12 +103,12 @@ class GitLabIssuesConnectedToGit
         STDERR.puts Paint['-' * 75, :red]
         STDERR.puts
     end
-    
+
     def error(message)
         STDERR.puts "Error: #{message}"
         exit(1)
     end
-    
+
     def assert_not_world_readable(path)
         if File.stat(path).world_readable?
             warning do |io|
@@ -118,7 +118,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def assert_ignored_by_git(path)
         `git check-ignore -q "#{path}"`
         unless $? == 0
@@ -132,7 +132,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def setup
         @project_root = Dir::pwd
         while !File::directory?(File::join(@project_root, '.git'))
@@ -141,13 +141,13 @@ class GitLabIssuesConnectedToGit
                 error('Not a git repository.')
             end
         end
-        
+
         Dir::chdir(@project_root)
 
         @project_root = File::join(@project_root, '.gl')
 
         @hook_path = File::join(@project_root, '..', '.git', 'hooks', 'prepare-commit-msg')
-        
+
         unless File::exist?(@hook_path)
             unless ARGV.first == 'init'
                 STDERR.puts "Error: project not initialized. Please run 'gl init'."
@@ -158,6 +158,9 @@ class GitLabIssuesConnectedToGit
         end
 
         @config_path = File::join(@project_root, 'config.yaml')
+        git_remote = `git remote -v`.lines.grep(/fetch/).grep(/\.de|\.com/)[0]
+        git_remote = git_remote.split(/\t| /)[1]
+        remote_uri = git_remote.gsub(/git@/,"https://").gsub(/com:/,"com/").gsub(/de:/,"de/").gsub(/\.git$/,"")
         if File::exist?(@config_path)
             @config = YAML::load(File::read(@config_path))
             @project_uri = @config['project_uri']
@@ -167,8 +170,11 @@ class GitLabIssuesConnectedToGit
             STDERR.puts "This only has to be done once and you should only see this if you're the project maintainer."
             STDERR.puts "Go to the project's GitLab page and enter the URL shown in your browser's address bar."
             STDERR.puts
-            STDERR.print "Project URL: "
+            STDERR.print "Project URL: [#{remote_uri}]"
             uri = STDIN.readline.strip
+            if uri.empty?
+                uri = remote_uri
+            end
             STDERR.puts
             u = URI::parse(uri)
             @project_uri = "#{u.scheme}://#{u.host}/api/v4/projects/#{u.path.split('/').select { |x| !x.empty? }.join('%2f')}"
@@ -180,16 +186,16 @@ class GitLabIssuesConnectedToGit
             STDERR.puts
             STDERR.puts "$ git add #{@config_path}"
             STDERR.puts "$ git commit -m 'added gl configuration'"
-            
+
             FileUtils::mkpath(File::dirname(@config_path))
-            
+
             @config = {'project_uri' => @project_uri, 'max_commit_message_header_length' => nil}
-            
+
             File::open(@config_path, 'w') do |f|
                 f.puts(@config.to_yaml)
             end
         end
-        
+
         @private_token_path_repository = File::join(@project_root, 'private_token')
         @private_token_path_user = File::join(Dir.home, '.gl_private_token')
         if File.exist?(@private_token_path_repository)
@@ -223,11 +229,11 @@ class GitLabIssuesConnectedToGit
         end
         @issues_path = File::join(@project_root, 'issues.yaml')
         assert_ignored_by_git(@issues_path)
-        
+
         update_if_necessary
         @issues = YAML::load(File::read(@issues_path))
     end
-    
+
     def current_issue()
         id = `git branch`.split("\n").select do |x|
             x.strip[0, 1] == '*'
@@ -238,7 +244,7 @@ class GitLabIssuesConnectedToGit
             nil
         end
     end
-    
+
     def init()
         FileUtils::mkpath(File::dirname(@hook_path))
         File::open(@hook_path, 'w') do |f|
@@ -247,7 +253,7 @@ class GitLabIssuesConnectedToGit
         system("chmod +x \'#{@hook_path}\'")
         STDERR.puts "Successfully installed Git prepare-commit-msg hook."
     end
-    
+
     def curl_gitlab(url)
         page = 1
         data = nil
@@ -288,7 +294,7 @@ class GitLabIssuesConnectedToGit
         end
         data
     end
-    
+
     def update()
         thread = Thread.new do
             loop do
@@ -299,7 +305,7 @@ class GitLabIssuesConnectedToGit
             end
         end
         thread.run
-        
+
         issues = {}
         curl_gitlab('issues').each do |entry|
             issues[entry['iid']] = entry
@@ -309,7 +315,7 @@ class GitLabIssuesConnectedToGit
             issues_by_status[issue['state']] ||= 0
             issues_by_status[issue['state']] += 1
         end
-        
+
         thread.kill
         STDERR.print "\r"
 
@@ -318,14 +324,14 @@ class GitLabIssuesConnectedToGit
             f.write issues.to_yaml
         end
         @issues = issues
-        
+
         # TODO: update branch names
     end
-    
+
     def update_if_necessary
         update unless File::exist?(@issues_path)
     end
-    
+
     def list(label = nil)
         id_width = @issues.keys.max.to_s.size
         @issues.keys.sort.each do |id|
@@ -343,7 +349,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def show(id)
         id = current_issue if id.nil?
         if id.nil?
@@ -384,7 +390,7 @@ class GitLabIssuesConnectedToGit
             STDERR.puts "Error: no issue found with id #{id}."
         end
     end
-    
+
     def start(id)
         if id.nil?
             STDERR.puts "Usage: gl start <issue id>"
@@ -432,7 +438,7 @@ class GitLabIssuesConnectedToGit
             id ||= ENV['GL_COMMIT_USING_ISSUE'].to_i
         end
         id ||= current_issue
-        if id 
+        if id
             if @issues.include?(id)
                 line = "[##{id}] #{@issues[id]['title']}".strip
                 max_length = @config['max_commit_message_header_length']
@@ -447,7 +453,7 @@ class GitLabIssuesConnectedToGit
             puts "# You're not in a topic branch. :-("
         end
     end
-    
+
     def collect_labels()
         if @all_labels.nil?
             @all_labels = Set.new()
@@ -457,13 +463,13 @@ class GitLabIssuesConnectedToGit
         end
         @all_labels
     end
-            
+
     def labels()
         collect_labels().sort.each do |label|
             puts label
         end
     end
-    
+
     def run
         args = ARGV
         command = args.first
