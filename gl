@@ -128,7 +128,7 @@ class GitLabIssuesConnectedToGit
                 relative_path = Pathname.new(path).relative_path_from(Pathname.new(File::join(@project_root, '..'))).to_s
                 gitignore_path = Pathname.new(File.join(@project_root, '..', '.gitignore')).relative_path_from(Pathname.new($pwd)).to_s
                 io.puts "$ echo '#{relative_path}' >> #{gitignore_path}"
-                io.puts "$ git add #{gitignore_path} && git commit -m 'ignore gl private token'"
+                io.puts "$ git add #{gitignore_path} && git commit -m '.gitignore update for gl'"
             end
         end
     end
@@ -146,7 +146,6 @@ class GitLabIssuesConnectedToGit
 
         @project_root = File::join(@project_root, '.gl')
 
-        @issues_path = File::join(@project_root, 'issues.yaml')
         @hook_path = File::join(@project_root, '..', '.git', 'hooks', 'prepare-commit-msg')
         
         unless File::exist?(@hook_path)
@@ -183,8 +182,11 @@ class GitLabIssuesConnectedToGit
             STDERR.puts "$ git commit -m 'added gl configuration'"
             
             FileUtils::mkpath(File::dirname(@config_path))
+            
+            @config = {'project_uri' => @project_uri}
+            
             File::open(@config_path, 'w') do |f|
-                f.puts({'project_uri' => @project_uri}.to_yaml)
+                f.puts(@config.to_yaml)
             end
         end
         
@@ -219,6 +221,9 @@ class GitLabIssuesConnectedToGit
                 assert_ignored_by_git(@private_token_path_repository)
             end
         end
+        @issues_path = File::join(@project_root, 'issues.yaml')
+        assert_ignored_by_git(@issues_path)
+        
         update_if_necessary
         @issues = YAML::load(File::read(@issues_path))
     end
