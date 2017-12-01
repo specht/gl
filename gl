@@ -73,10 +73,18 @@ class GitLabIssuesConnectedToGit
             end
             exit(0)
         end
-        
+
         setup(true)
     end
-    
+
+    def git_uri()
+        git_uri = `git remote -v`.lines.grep(/fetch/).grep(/\.de|\.com/)[0]
+        git_uri = git_uri.split(/\t| /)[1]
+        uri = git_uri.gsub(/git@/,"https://").gsub(/com:/,"com/").gsub(/de:/,"de/")
+        return uri
+        exit(0)
+    end
+
     def setup(interactive)
         @project_root = Dir::pwd
         while !File::directory?(File::join(@project_root, '.git'))
@@ -86,7 +94,7 @@ class GitLabIssuesConnectedToGit
                 exit(1)
             end
         end
-        
+
         Dir::chdir(@project_root)
 
         @project_root = File::join(@project_root, '.gl')
@@ -95,7 +103,7 @@ class GitLabIssuesConnectedToGit
         @private_token_path = File::join(@project_root, 'private_token')
         @issues_path = File::join(@project_root, 'issues.yaml')
         @hook_path = File::join(@project_root, '..', '.git', 'hooks', 'prepare-commit-msg')
-        
+
         unless File::exists?(@hook_path)
             unless ARGV.first == 'init'
                 STDERR.puts "Error: project not initialized. Please run 'gl init'."
@@ -125,7 +133,7 @@ class GitLabIssuesConnectedToGit
             STDERR.puts
             STDERR.puts "$ git add .gl/project_uri"
             STDERR.puts "$ git commit -m 'added .gl/project_uri'"
-            
+
             FileUtils::mkpath(File::dirname(@project_uri_path))
             File::open(@project_uri_path, 'w') do |f|
                 f.write(@project_uri)
@@ -153,7 +161,7 @@ class GitLabIssuesConnectedToGit
         update() unless File::exists?(@issues_path)
         @issues = YAML::load(File::read(@issues_path))
     end
-    
+
     def current_issue()
         id = `git branch`.split("\n").select do |x|
             x.strip[0, 1] == '*'
@@ -164,7 +172,7 @@ class GitLabIssuesConnectedToGit
             nil
         end
     end
-    
+
     def init()
         FileUtils::mkpath(File::dirname(@hook_path))
         File::open(@hook_path, 'w') do |f|
@@ -173,7 +181,7 @@ class GitLabIssuesConnectedToGit
         system("chmod +x \'#{@hook_path}\'")
         STDERR.puts "Successfully installed Git prepare-commit-msg hook."
     end
-    
+
     def curl_gitlab(url)
         page = 1
         data = nil
@@ -218,7 +226,7 @@ class GitLabIssuesConnectedToGit
         end
         data
     end
-    
+
     def update()
         thread = Thread.new do
             while true do
@@ -229,7 +237,7 @@ class GitLabIssuesConnectedToGit
             end
         end
         thread.run
-        
+
         issues = {}
         curl_gitlab('issues').each do |entry|
             issues[entry['iid']] = entry
@@ -239,7 +247,7 @@ class GitLabIssuesConnectedToGit
             issues_by_status[issue['state']] ||= 0
             issues_by_status[issue['state']] += 1
         end
-        
+
         thread.kill
         STDERR.print "\r"
 
@@ -248,10 +256,10 @@ class GitLabIssuesConnectedToGit
             f.write issues.to_yaml
         end
         @issues = issues
-        
+
         # TODO: update branch names
     end
-    
+
     def list(label = nil)
         id_width = @issues.keys.max.to_s.size
         @issues.keys.sort.each do |id|
@@ -269,7 +277,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def show(id)
         id = current_issue if id.nil?
         if id.nil?
@@ -310,7 +318,7 @@ class GitLabIssuesConnectedToGit
             STDERR.puts "Error: no issue found with id #{id}."
         end
     end
-    
+
     def start(id)
         if id.nil?
             STDERR.puts "Usage: gl start <issue id>"
@@ -358,7 +366,7 @@ class GitLabIssuesConnectedToGit
             id ||= ENV['GL_COMMIT_USING_ISSUE'].to_i
         end
         id ||= current_issue
-        if id 
+        if id
             if @issues.include?(id)
                 puts "[##{id}] #{@issues[id]['title']}"
             else
@@ -368,7 +376,7 @@ class GitLabIssuesConnectedToGit
             puts "# You're not in a topic branch. :-("
         end
     end
-    
+
     def collect_labels()
         if @all_labels.nil?
             @all_labels = Set.new()
@@ -378,13 +386,13 @@ class GitLabIssuesConnectedToGit
         end
         @all_labels
     end
-            
+
     def labels()
         collect_labels().sort.each do |label|
             puts label
         end
     end
-    
+
     def run()
         args = ARGV
         command = args.first
