@@ -48,37 +48,24 @@ class GitLabIssuesConnectedToGit
             
             # Issue commands
             
-            ac.option('new', nil, true) do |ac, collected_parts|
-                setup
-                define_autocomplete_labels(ac, false, false, Set.new(collected_parts[1, collected_parts.size - 1]))
-                ac.handler { |args| new_issue(args) }
-            end
+#             ac.option('new', nil, true) do |ac, collected_parts|
+#                 setup
+#                 define_autocomplete_labels(ac, false, false, Set.new(collected_parts[1, collected_parts.size - 1]))
+#                 ac.handler { |args| new_issue(args) }
+#             end
             
             ac.option('list', nil, true) do |ac, collected_parts|
                 setup
                 ac.option('--all')
                 ac.option('--closed')
-#                 define_autocomplete_labels(ac, false, false, Set.new(collected_parts[1, collected_parts.size - 1]))
+                add_autocomplete_options_for_labels(ac)
                 ac.handler { |args| run_pager(); list(args) }
             end
             
-            def current_issue_or_from_args(args)
-                issue = nil
-                if args.first
-                    issue = args.first
-                else
-                    issue = `git rev-parse --abbrev-ref HEAD`.strip[0, 6]
-                    issue = nil unless issue =~ /^[a-z]{2}\d{4}$/
-                end
-                unless issue
-                    puts "Error: No issue specified (and also not currently in an issue branch)."
-                    exit(1)
-                end
-                return issue
-            end
-            
             ac.option('show') do |ac|
-                define_autocomplete_issues(ac)
+                setup
+                add_autocomplete_options_for_open_issue_slug_parts(ac)
+                add_autocomplete_options_for_all_issue_slugs(ac)
                 ac.handler do |args|
                     issue = current_issue_or_from_args(args)
                     run_pager()
@@ -86,41 +73,37 @@ class GitLabIssuesConnectedToGit
                 end
             end
                 
-            ac.option('oneline') do |ac|
-                define_autocomplete_issues(ac)
-                ac.handler do |args| 
-                    issue = current_issue_or_from_args(args)
-                    oneline(issue)
-                end
-            end
-                
-            ac.option('edit') do |ac|
-                define_autocomplete_issues(ac)
-                ac.handler do |args|
-                    issue = current_issue_or_from_args(args)
-                    edit_object(issue)
-                end
-            end
+#             ac.option('edit') do |ac|
+#                 define_autocomplete_issues(ac)
+#                 ac.handler do |args|
+#                     issue = current_issue_or_from_args(args)
+#                     edit_object(issue)
+#                 end
+#             end
                 
             ac.option('start') do |ac|
-                define_autocomplete_issues(ac)
-                ac.handler { |args| start_working_on_issue(args.first) }
+                setup
+                add_autocomplete_options_for_open_issue_slug_parts(ac)
+                add_autocomplete_options_for_all_issue_slugs(ac)
+                ac.handler do |args|
+                    issue = current_issue_or_from_args(args)
+                    run_pager()
+                    start(issue)
+                end
             end
                 
-            ac.option('rm') do |ac|
-                define_autocomplete_issues(ac)
-                ac.handler { |args| rm_issue(args.first) }
-            end
-                
-            ac.option('restore') do |ac|
-                current_issue_ids = all_issue_ids(false)
-                define_autocomplete_issues(ac, true, false, Set.new(current_issue_ids))
-                ac.handler { |args| restore_issue(args.first) }
-            end
+#             ac.option('close') do |ac|
+#             end
                 
             ac.option('commit') do |ac|
-                define_autocomplete_issues(ac)
-                ac.handler { |args| commit_using_issue(args.first, args[1, args.size - 1]) }
+                setup
+                add_autocomplete_options_for_open_issue_slug_parts(ac)
+                    add_autocomplete_options_for_all_issue_slugs(ac)
+                ac.handler do |args|
+                    issue = current_issue_or_from_args(args)
+                    run_pager()
+                    commit(issue, args[1, args.size - 1])
+                end
             end
 
             # Miscellaneous commands
@@ -130,8 +113,12 @@ class GitLabIssuesConnectedToGit
                 ac.handler { |args| update(); }
             end
             
+            ac.option('labels') do |ac|
+                setup
+                ac.handler { |args| labels(); }
+            end
+            
             ac.option('search') do |ac|
-                define_autocomplete_keywords(ac)
                 ac.handler { |args| run_pager(); search(args) }
             end
                 
@@ -162,42 +149,60 @@ class GitLabIssuesConnectedToGit
         end
         puts "Unknown command: #{ARGV.first}. Try 'gl help' for a list of possible commands."
     end
+    
+    def add_autocomplete_options_for_labels(ac)
+        @tokens_by_type[:label].each do |token|
+            @tokens[token].each do |item|
+                if item.is_a? String
+                    ac.option(token, item.parameterize)
+                end
+            end
+        end
+    end
+    
+    def add_autocomplete_options_for_open_issue_slug_parts(ac)
+        # let slug parts expand to full issue identifiers for open issues
+        @tokens_by_type[:open_issue].each do |token|
+            @tokens[token].each do |item|
+                unless item.is_a? String
+                    next unless @issues[item]['state'] == 'opened'
+                    slug = @issues[item]['title'].parameterize
+                    slug.split('-').each do |slug_part|
+                        ac.option(slug_part, "#{item}-#{slug}")
+                    end
+                end
+            end
+        end
+    end
+    
+    def add_autocomplete_options_for_all_issue_slugs(ac)
+        # also auto-complete all full issue identifiers (open or closed)
+        @issues.keys.sort.each do |issue_id|
+            slug = @issues[issue_id]['title'].parameterize
+            ac.option("#{issue_id}-#{slug}")
+        end
+    end
 
-    # auto-completion helper: define categories and issues with slugs and slug parts
-    # If recursive == false, only define current objects
-    # If recursive == true, also walk back in history and define removed objects
-    # Use include to specify IDs to use (instead of using all_ids)
-    # Use exclude to specify completions that should be excluded
-    def define_autocomplete_object(type, ac, recursive = false, inception = false, exclude = Set.new(), include = nil, &block)
-        use_ids = include
-        use_ids ||= all_ids(recursive, type)
-        use_ids.each do |id|
-            object = load_object(id)
-            next if exclude.include?(object[:slug]) || exclude.include?(object[:id])
-            ac.option(object[:slug], nil, inception, &block)
-            ac.option(object[:slug], object[:slug], inception, &block)
-            object[:slug_pieces].each do |p|
-                ac.option(p, object[:slug], inception, &block)
-            end
+    def current_issue_or_from_args(args)
+        issue = nil
+        
+        if args.first
+            issue = args.first
+        else
+            issue = `git rev-parse --abbrev-ref HEAD`.strip[0, 6]
         end
-    end
-    
-    def define_autocomplete_labels(ac, recursive = false, inception = false, exclude = Set.new(), include = nil, &block)
-        define_autocomplete_object('label', ac, recursive, inception, exclude, include, &block)
-    end
-    
-    def define_autocomplete_issues(ac, recursive = false, inception = false, exclude = Set.new(), include = nil, &block)
-        define_autocomplete_object('issue', ac, recursive, inception, exclude, include, &block)
-    end
-    
-    def define_autocomplete_keywords(ac, recursive = false, inception = false, exclude = Set.new(), &block)
-        (Set.new(all_issue_ids(recursive)) | Set.new(all_category_ids(recursive))).each do |id|
-            object = load_object(id)
-            object[:slug_pieces].each do |p|
-                next if exclude.include?(p)
-                ac.option(p, nil, inception, &block)
-            end
+        
+        if issue.split('-').first =~ /^\d+$/
+            issue = issue.split('-').first.to_i
+        else
+            issue = nil
         end
+        
+        unless issue
+            puts "Error: No issue specified (and also not currently in an issue branch)."
+            exit(1)
+        end
+        issue
     end
     
     def cmul(c, f)
@@ -361,9 +366,9 @@ class GitLabIssuesConnectedToGit
                 @tokens[token] ||= Set.new()
                 @tokens[token] << issue['iid']
                 @tokens_by_type[:issue] << token
-                if issue['status'] == 'opened'
+                if issue['state'] == 'opened'
                     @tokens_by_type[:open_issue] << token
-                elsif issue['status'] == 'closed'
+                elsif issue['state'] == 'closed'
                     @tokens_by_type[:closed_issue] << token
                 end
             end
@@ -510,10 +515,42 @@ class GitLabIssuesConnectedToGit
         end
         show_labels = Set.new(args.select { |x| x[0] != '-' })
         id_width = @issues.keys.max.to_s.size
-#         puts Paint[' Bug ' + ' ' * 30, '#ef2929', '#721f1f']
-        @issues.keys.sort.each do |id|
+        label_order = ['Bug', 'QM', 'Feature', 'Recurring']
+        label_set = Set.new(label_order)
+        previous_label_index = nil
+        @issues.keys.sort do |a, b|
+            unless label_order.empty?
+                present_labels_a = Set.new(@issues[a]['labels']) & label_set
+                first_order_a = present_labels_a.empty? ? label_order.size : present_labels_a.map { |x| label_order.index(x) }.min
+                present_labels_b = Set.new(@issues[b]['labels']) & label_set
+                first_order_b = present_labels_b.empty? ? label_order.size : present_labels_b.map { |x| label_order.index(x) }.min
+                first_order_a == first_order_b ?
+                    (a <=> b) :
+                    (first_order_a <=> first_order_b)
+            else
+                a <=> b
+            end
+        end.each do |id|
             issue = @issues[id]
             if show_states.include?(issue['state'])
+                unless label_order.empty?
+                    present_labels = Set.new(@issues[id]['labels']) & label_set
+                    first_order = present_labels.empty? ? label_order.size : present_labels.map { |x| label_order.index(x) }.min
+                    if first_order < label_order.size
+                        label = label_order[first_order]
+                        color = @labels[label]['color']
+                        if first_order != previous_label_index
+                            puts Paint[sprintf(' %-72s', label), color, cmul(color, 0.25)]
+                            previous_label_index = first_order
+                        end
+                    else
+                        if first_order != previous_label_index
+                            color = '#aaaaaa'
+                            puts Paint[sprintf(' %-72s', 'Other'), color, cmul(color, 0.25)]
+                            previous_label_index = first_order
+                        end
+                    end
+                end
                 unless show_labels.empty?
                     next if (Set.new(issue['labels'].map { |x| x.parameterize }) & show_labels).empty?
                 end
@@ -535,7 +572,7 @@ class GitLabIssuesConnectedToGit
                         Paint[label, color, bgcolor]
                     end
                     print Paint[' (', nil, bgcolor]
-                    print s.join(Paint[' / ', nil, bgcolor])
+                    print s.join(Paint[', ', nil, bgcolor])
                     print Paint[')', nil, bgcolor]
 #                     print Paint["(#{issue['labels'].sort.join(', ')})", :blue]
                 end
@@ -545,11 +582,6 @@ class GitLabIssuesConnectedToGit
     end
 
     def show(id)
-        id = current_issue if id.nil?
-        if id.nil?
-            STDERR.puts "Usage: gl show <issue id>"
-            exit(1)
-        end
         update_if_necessary
         if @issues.include?(id)
             issue = @issues[id]
@@ -557,9 +589,10 @@ class GitLabIssuesConnectedToGit
             puts '-' * 75
             puts l
             puts '-' * 75
-            puts "Labels:   #{issue['labels'].empty? ? '(none)' : issue['labels'].join(', ')}"
+            puts "Labels:   #{issue['labels'].empty? ? '(none)' : issue['labels'].map { |x| Paint[x, @labels[x]['color']]}.join(', ')}"
             puts "State:    #{issue['state']}"
             puts "Created:  #{issue['created_at'][0, 10]}"
+            puts "Closed:   #{issue['closed_at'][0, 10]}" if issue['closed_at']
             if issue['assignee']
                 puts "Assigned: #{issue['assignee']['name']}"
             end
@@ -586,10 +619,6 @@ class GitLabIssuesConnectedToGit
     end
 
     def start(id)
-        if id.nil?
-            STDERR.puts "Usage: gl start <issue id>"
-            exit(1)
-        end
         update_if_necessary
         if @issues.include?(id)
             branch_name = "#{id}-#{@issues[id]['title'].parameterize}"
@@ -612,11 +641,6 @@ class GitLabIssuesConnectedToGit
     end
 
     def commit(id, args)
-        id = current_issue if id.nil?
-        if id.nil?
-            STDERR.puts "Usage: gl commit <issue id> [further options passed to git]"
-            exit(1)
-        end
         update_if_necessary
         if @issues.include?(id)
             system("GL_COMMIT_USING_ISSUE=#{id} git commit #{(args || []).join(' ')}")
@@ -660,43 +684,10 @@ class GitLabIssuesConnectedToGit
 
     def labels()
         collect_labels().sort.each do |label|
-            puts label
+            puts Paint[label, @labels[label]['color']]
         end
     end
 
-    def run
-        args = ARGV
-        command = args.shift
-        case command
-        when 'init'
-            init
-        when 'update'
-            update
-        when 'list'
-            run_pager
-            list(args)
-        when 'start'
-            start(args[1].nil? ? nil : args[1].to_i)
-        when 'commit'
-            commit(args[1].nil? ? nil : args[1].to_i, args[2, args.size - 2])
-        when 'show'
-            show(args[1].nil? ? nil : args[1].to_i)
-        when 'commit-message'
-            commit_message
-        when 'labels'
-            labels
-        else
-            puts 'Usage: gl <init|update|list|start|commit|show|labels>'
-            puts '  init           - set up git hook'
-            puts '  update         - fetch issues from GitLab server'
-            puts '  list [<label>] - list all open issues (with label if specified)'
-            puts '  start <id>     - start a topic branch for the given issue'
-            puts '  commit <id>    - commit for an issue from any branch'
-            puts '  show <id>      - show issue'
-            puts '  labels         - show labels'
-        end
-    end
-    
     def show_help(args)
         items = HELP_TEXT.strip.split(/^__(.+)$/)
         items.shift
