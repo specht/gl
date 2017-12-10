@@ -273,7 +273,16 @@ class GitLabIssuesConnectedToGit
             @project_uri = @config['project_uri']
         else
             git_remote = `git remote get-url origin`.strip
-            remote_uri = git_remote.sub('git@', 'https://').sub(':', '/').sub('.git', '')
+            remote_uri = git_remote.sub(/\.git$/, '')
+            # Do we have a SSH or HTTPS URL?
+            if !git_remote.start_with?('https://', 'git@')
+                STDERR.puts "Error: Unknown remote URL format in #{git_remote}"
+                exit(1)
+            end
+            if git_remote.start_with?('git@')
+                # Substitute ':' before introducing 'https://'
+                remote_uri = remote_uri.sub(':', '/').sub(/^git@/, 'https://')
+            end
             @project_uri_path = File::join(@project_root, 'project_uri')
             STDERR.puts "Error: no project configuration defined (#{@config_path} not found)."
             STDERR.puts "This only has to be done once and you should only see this if you're the project maintainer."
