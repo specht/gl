@@ -26,6 +26,89 @@ rescue LoadError
     end
 end
 
+def wordwrap(s, max_length = 80)
+    in_escape_sequence = false
+    line_length = 0
+    parts = []
+    s.each_char do |c|
+        if !in_escape_sequence && c.ord == 0x1b
+            in_escape_sequence = true
+            parts << ''
+        end
+        parts << '' if parts.empty?
+        parts[-1] += c
+        if in_escape_sequence && c.ord == 0x6d
+            in_escape_sequence = false
+            parts << ''
+        end
+    end
+    parts.reject! { |part| part.empty? }
+    parts.map! do |part|
+        if part[0].ord == 0x1b
+            part
+        else
+            part.split(/(?<=\s)/)
+        end
+    end
+    parts.flatten!
+    parts.map! do |part| 
+        [part, 
+         part[0].ord == 0x1b ? 0 : part.size, 
+         part[0].ord == 0x1b ? false : !!(part[-1] =~ /\s/) 
+        ]
+    end
+    spans = [['', 0]]
+    parts.each do |part|
+        spans[-1][0] += part[0]
+        spans[-1][1] += part[1]
+        if part[2]
+            spans << ['', 0]
+        end
+    end
+    result = ''
+    line_length = 0
+    spans.each do |span|
+        unless line_length + span[1] <= max_length
+            result.chop!
+            result += "\n"
+            line_length = 0
+        end
+        result += span[0]
+        line_length += span[1]
+    end
+    result
+end
+
+def indent(s, indent = 4, first_line = true)
+    indent_string = ' ' * indent
+    first_indent = first_line ? indent_string : ''
+    first_indent + s.gsub("\n", "\n" + indent_string)
+end
+
+def cheading(s, color)
+    Paint['== ' + s + ' ' + '=' * ([@screen_width - s.size - 4, 0].max), color]
+end
+
+def duration(date)
+    d = (DateTime.parse(date) - DateTime.now).to_f.ceil
+    if d < 0
+        d = d.abs
+        if d < 7
+            "#{d} days ago"
+        else
+            "#{d / 7} weeks ago"
+        end
+    elsif d > 0
+        if d < 7
+            "#{d} days from now"
+        else
+            "#{d / 7} weeks from now"
+        end
+    else
+        "today"
+    end
+end
+
 class GitLabIssuesConnectedToGit
     def initialize
         # first try editor configured by Git
@@ -35,24 +118,26 @@ class GitLabIssuesConnectedToGit
         @editor ||= ENV['EDITOR']
         # if that failed as well, fall back to nano
         @editor ||= 'nano'
+
+        # try to determine screen width
+        @screen_width = nil        
+        temp = `stty size 2> /dev/null`
+        if $?.exitstatus == 0
+            @screen_width = temp.strip.split(' ')[1].strip.to_i
+        end
+        # default: 80 columns
+        @screen_width ||= 80
         
         CliDispatcher::launch do |ac|
             ac.option('help') do |ac|
-                ['new', 'list', 'show', 'edit', 'start', 'close', 
-                 'reopen', 'locate', 'commit', 'update', 'labels',
-                 'search'].each do |x|
+                ['list', 'todo', 'show', 'start', 'close', 'reopen', 
+                 'commit', 'init', 'update', 'labels'].each do |x|
                     ac.option(x)
                 end
                 ac.handler { |args| run_pager(); show_help(args) }
             end
             
             # Issue commands
-            
-#             ac.option('new', nil, true) do |ac, collected_parts|
-#                 setup
-#                 define_autocomplete_labels(ac, false, false, Set.new(collected_parts[1, collected_parts.size - 1]))
-#                 ac.handler { |args| new_issue(args) }
-#             end
             
             ac.option('list', nil, true) do |ac, collected_parts|
                 setup
@@ -62,29 +147,28 @@ class GitLabIssuesConnectedToGit
                 ac.handler { |args| run_pager(); list(args) }
             end
             
+            ac.option('todo') do |ac|
+                setup
+                ac.handler { |args| run_pager(); todo }
+            end
+            
             ac.option('show') do |ac|
                 setup
-                add_autocomplete_options_for_open_issue_slug_parts(ac)
-                add_autocomplete_options_for_all_issue_slugs(ac)
-                ac.handler do |args|
-                    issue = current_issue_or_from_args(args)
-                    run_pager()
-                    show(issue)
-                end
-            end
-                
-#             ac.option('edit') do |ac|
-#                 define_autocomplete_issues(ac)
-#                 ac.handler do |args|
-#                     issue = current_issue_or_from_args(args)
-#                     edit_object(issue)
+                add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
+                add_autocomplete_options_for_issue_slugs(ac, :issue)
+#                 add_autocomplete_options_for_issues(ac, :open_issue) do |ac|
+                    ac.handler do |args|
+                        issue = current_issue_or_from_args(args)
+                        run_pager()
+                        show(issue)
+                    end
 #                 end
-#             end
+            end
                 
             ac.option('start') do |ac|
                 setup
-                add_autocomplete_options_for_open_issue_slug_parts(ac)
-                add_autocomplete_options_for_all_issue_slugs(ac)
+                add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
+                add_autocomplete_options_for_issue_slugs(ac, :issue)
                 ac.handler do |args|
                     issue = current_issue_or_from_args(args)
                     run_pager()
@@ -92,59 +176,55 @@ class GitLabIssuesConnectedToGit
                 end
             end
                 
-#             ac.option('close') do |ac|
-#             end
+            ac.option('close') do |ac|
+                setup
+                add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
+                add_autocomplete_options_for_issue_slugs(ac, :open_issue)
+                ac.handler do |args| 
+                    issue = current_issue_or_from_args(args)
+                    close_issue(issue)
+                end
+            end
+                
+            ac.option('reopen') do |ac|
+                setup
+                add_autocomplete_options_for_issue_slug_parts(ac, :closed_issue)
+                add_autocomplete_options_for_issue_slugs(ac, :closed_issue)
+                ac.handler do |args| 
+                    issue = current_issue_or_from_args(args)
+                    reopen_issue(issue)
+                end
+            end
                 
             ac.option('commit') do |ac|
                 setup
-                add_autocomplete_options_for_open_issue_slug_parts(ac)
-                    add_autocomplete_options_for_all_issue_slugs(ac)
+                add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
+                add_autocomplete_options_for_issue_slugs(ac, :issue)
                 ac.handler do |args|
                     issue = current_issue_or_from_args(args)
                     run_pager()
                     commit(issue, args[1, args.size - 1])
                 end
             end
+            
+            ac.secret_option('commit-message') do |ac|
+                setup
+                ac.handler { |args| commit_message }
+            end
 
-            # Miscellaneous commands
+            ac.option('init') do |ac|
+                setup
+                ac.handler { |args| init }
+            end
             
             ac.option('update') do |ac|
                 setup
-                ac.handler { |args| update(); }
+                ac.handler { |args| update }
             end
             
             ac.option('labels') do |ac|
                 setup
-                ac.handler { |args| labels(); }
-            end
-            
-            ac.option('search') do |ac|
-                ac.handler { |args| run_pager(); search(args) }
-            end
-                
-            ac.option('log') do |ac|
-                ac.handler { |args| run_pager(); log() }
-            end
-                
-            ac.option('locate') do |ac|
-                define_autocomplete_issues(ac)
-                ac.handler do |args|
-                    issue = current_issue_or_from_args(args)
-                    run_pager()
-                    locate_issue(issue)
-                end
-            end
-
-            ac.option('pull') do |ac|
-                ac.handler { |args| pull() }
-            end
-                
-            ac.option('push') do |ac|
-                ac.handler { |args| push() }
-            end
-
-            ac.option('visualize') do |ac|
-                ac.handler { |args| visualize() }
+                ac.handler { |args| labels }
             end
         end
         puts "Unknown command: #{ARGV.first}. Try 'gl help' for a list of possible commands."
@@ -160,13 +240,17 @@ class GitLabIssuesConnectedToGit
         end
     end
     
-    def add_autocomplete_options_for_open_issue_slug_parts(ac)
-        # let slug parts expand to full issue identifiers for open issues
-        @tokens_by_type[:open_issue].each do |token|
+    def add_autocomplete_options_for_issue_slug_parts(ac, which = :issue)
+        # let slug parts expand to full issue identifiers for issues
+        @tokens_by_type[which].each do |token|
             @tokens[token].each do |item|
                 unless item.is_a? String
-                    next unless @issues[item]['state'] == 'opened'
-                    slug = @issues[item]['title'].parameterize
+                    issue = @issues[item]
+                    if (which == :closed_issue && issue['state'] != 'closed') ||
+                       (which == :open_issue && issue['state'] != 'opened')
+                        next
+                    end
+                    slug = issue['title'].parameterize
                     slug.split('-').each do |slug_part|
                         ac.option(slug_part, "#{item}-#{slug}")
                     end
@@ -175,11 +259,20 @@ class GitLabIssuesConnectedToGit
         end
     end
     
-    def add_autocomplete_options_for_all_issue_slugs(ac)
+    def add_autocomplete_options_for_issue_slugs(ac, which = :issue)
         # also auto-complete all full issue identifiers (open or closed)
-        @issues.keys.sort.each do |issue_id|
-            slug = @issues[issue_id]['title'].parameterize
-            ac.option("#{issue_id}-#{slug}")
+        @tokens_by_type[which].each do |token|
+            @tokens[token].each do |item|
+                unless item.is_a? String
+                    issue = @issues[item]
+                    if (which == :closed_issue && issue['state'] != 'closed') ||
+                       (which == :open_issue && issue['state'] != 'opened')
+                        next
+                    end
+                    slug = issue['title'].parameterize
+                    ac.option("#{item}-#{slug}", "#{item}-#{slug}")
+                end
+            end
         end
     end
 
@@ -265,7 +358,7 @@ class GitLabIssuesConnectedToGit
 
         unless File::exist?(@hook_path)
             unless ARGV.first == 'init'
-                STDERR.puts "Error: project not initialized. Please run 'gl init'."
+                STDERR.puts "Error: Git hooks not initialized. Please run 'gl init'."
                 STDERR.puts "If you're just installing gl on your machine, you might want to create the following symlink:"
                 STDERR.puts "$ sudo ln -s #{File::expand_path(__FILE__)} /usr/local/bin/gl"
                 exit(1)
@@ -319,6 +412,13 @@ class GitLabIssuesConnectedToGit
             end
         end
 
+        @user_config = {}
+        @user_config_path = File::join(@project_root, 'config.user.yaml')
+        if File::exist?(@user_config_path)
+            assert_ignored_by_git(@user_config_path)
+            @user_config = YAML::load(File::read(@user_config_path))
+        end
+        
         @private_token_path_repository = File::join(@project_root, 'private_token')
         @private_token_path_user = File::join(Dir.home, '.gl_private_token')
         if File.exist?(@private_token_path_repository)
@@ -412,7 +512,7 @@ class GitLabIssuesConnectedToGit
         STDERR.puts "Successfully installed Git prepare-commit-msg hook."
     end
 
-    def curl_gitlab(url)
+    def gitlab_get(url)
         page = 1
         data = nil
         loop do
@@ -452,6 +552,66 @@ class GitLabIssuesConnectedToGit
         end
         data
     end
+    
+    def gitlab_put(url)
+        command = "curl --request PUT -sS --header 'PRIVATE-TOKEN: #{@token}' '#{@project_uri}/#{url}'"
+        stdin, stdout, stderr, thread = Open3.popen3(command)
+        stdin.close
+        exit_code = thread.value.exitstatus
+        data = nil
+        if exit_code == 0
+            body = stdout.read
+            data = JSON::parse(body)
+        else
+            STDERR.print "\r"
+            STDERR.puts stderr.read
+            exit(1)
+        end
+        stdout.close
+        stderr.close
+        data
+    end
+    
+#     def new_issue(args)
+#         STDERR.puts args.to_yaml
+#         raise 'oops'
+#     end
+    
+    def idle_spinner(&block)
+        idle_spinner_thread = Thread.new do
+            loop do
+                ['|', '/', '-', '\\'].each do |c|
+                    STDERR.print "\r#{c}"
+                    sleep 0.1
+                end
+            end
+        end
+        idle_spinner_thread.run
+        yield
+        idle_spinner_thread.kill
+        STDERR.print "\r"
+    end
+    
+    def update_issue(issue)
+        # update a single issue in the state file
+        state = YAML::load(File::read(@state_path))
+        state[:issues][issue['iid']] = issue
+        File::open(@state_path, 'w') do |f|
+            f.write state.to_yaml
+        end
+    end
+    
+    def close_issue(args)
+        idle_spinner do
+            update_issue(gitlab_put("issues/#{args}?state_event=close"))
+        end
+    end
+
+    def reopen_issue(args)
+        idle_spinner do
+            update_issue(gitlab_put("issues/#{args}?state_event=reopen"))
+        end
+    end
 
     def update()
         thread = Thread.new do
@@ -466,14 +626,14 @@ class GitLabIssuesConnectedToGit
 
         t1 = Thread.new do
             @issues = {}
-            curl_gitlab('issues').each do |entry|
+            gitlab_get('issues').each do |entry|
                 @issues[entry['iid']] = entry
             end
         end
         t1.run
         t2 = Thread.new do
             @labels = {}
-            curl_gitlab('labels').each do |entry|
+            gitlab_get('labels').each do |entry|
                 @labels[entry['name']] = entry
             end
         end
@@ -515,7 +675,7 @@ class GitLabIssuesConnectedToGit
         return result
     end
     
-    def list(args = [])
+    def list(args = [], sort_by = nil)
         show_states = ['opened']
         if args.include?('--all')
             show_states = ['opened', 'closed']
@@ -524,70 +684,96 @@ class GitLabIssuesConnectedToGit
         end
         show_labels = Set.new(args.select { |x| x[0] != '-' })
         id_width = @issues.keys.max.to_s.size
-        label_order = ['Bug', 'QM', 'Feature', 'Recurring']
+        label_order = [] 
+        if show_labels.empty? && @user_config && @user_config['highlighted_labels']
+            label_order = @user_config['highlighted_labels']
+        end
         label_set = Set.new(label_order)
         previous_label_index = nil
+        previous_due_date = nil
         @issues.keys.sort do |a, b|
-            unless label_order.empty?
-                present_labels_a = Set.new(@issues[a]['labels']) & label_set
-                first_order_a = present_labels_a.empty? ? label_order.size : present_labels_a.map { |x| label_order.index(x) }.min
-                present_labels_b = Set.new(@issues[b]['labels']) & label_set
-                first_order_b = present_labels_b.empty? ? label_order.size : present_labels_b.map { |x| label_order.index(x) }.min
-                first_order_a == first_order_b ?
-                    (a <=> b) :
-                    (first_order_a <=> first_order_b)
+            if sort_by.nil?
+                unless label_order.empty?
+                    present_labels_a = Set.new(@issues[a]['labels']) & label_set
+                    first_order_a = present_labels_a.empty? ? label_order.size : present_labels_a.map { |x| label_order.index(x) }.min
+                    present_labels_b = Set.new(@issues[b]['labels']) & label_set
+                    first_order_b = present_labels_b.empty? ? label_order.size : present_labels_b.map { |x| label_order.index(x) }.min
+                    first_order_a == first_order_b ?
+                        (a <=> b) :
+                        (first_order_a <=> first_order_b)
+                else
+                    a <=> b
+                end
             else
-                a <=> b
+                if sort_by == :due_date
+                    dda = @issues[a]['due_date'] || '9999-99-99'
+                    ddb = @issues[b]['due_date'] || '9999-99-99'
+                    dda <=> ddb
+                end
             end
         end.each do |id|
             issue = @issues[id]
             if show_states.include?(issue['state'])
-                unless label_order.empty?
-                    present_labels = Set.new(@issues[id]['labels']) & label_set
-                    first_order = present_labels.empty? ? label_order.size : present_labels.map { |x| label_order.index(x) }.min
-                    if first_order < label_order.size
-                        label = label_order[first_order]
-                        color = @labels[label]['color']
+                if sort_by.nil?
+                    unless label_order.empty?
+                        present_labels = Set.new(@issues[id]['labels']) & label_set
+                        first_order = present_labels.empty? ? label_order.size : present_labels.map { |x| label_order.index(x) }.min
+                        if first_order < label_order.size
+                            label = label_order[first_order]
+                            color = @labels[label]['color']
+                        else
+                            label = 'Other'
+                            color = '#aaaaaa'
+                        end
                         if first_order != previous_label_index
-                            puts Paint[sprintf(' %-72s', label), color, cmul(color, 0.25)]
+                            puts cheading(label, color)
                             previous_label_index = first_order
                         end
-                    else
-                        if first_order != previous_label_index
-                            color = '#aaaaaa'
-                            puts Paint[sprintf(' %-72s', 'Other'), color, cmul(color, 0.25)]
-                            previous_label_index = first_order
+                    end
+                else
+                    due_date = issue['due_date']
+                    if previous_due_date != due_date
+                        previous_due_date = due_date
+                        if due_date.nil?
+                            puts cheading('No due date', '#aaaaaa')
+                        else
+                            puts cheading("Due date: #{due_date} (#{duration(due_date)})", '#ff0000')
                         end
                     end
                 end
                 unless show_labels.empty?
                     next if (Set.new(issue['labels'].map { |x| x.parameterize }) & show_labels).empty?
                 end
-                color = nil
-                bgcolor = nil
+                color = :default
+                bgcolor = :default
                 id_s = "[##{id}]"
                 if issue['state'] == 'closed'
                     id_s = unicode_strike_through(id_s)
                     color = '#666'
                     bgcolor = '#222'
                 end
-                print Paint["#{' ' * (id_width - id.to_s.size)}#{id_s} #{issue['title']}", color, bgcolor]
+                line = Paint["#{' ' * (id_width - id.to_s.size)}#{id_s} #{issue['title']}", color, bgcolor]
                 unless issue['labels'].empty?
                     s = issue['labels'].sort.map do |label|
                         color = nil
                         if @labels.include?(label)
                             color = @labels[label]['color']
                         end
-                        Paint[label, color, bgcolor]
+                        Paint[label.gsub(' ', "\u00a0"), color, bgcolor]
                     end
-                    print Paint[' (', nil, bgcolor]
-                    print s.join(Paint[', ', nil, bgcolor])
-                    print Paint[')', nil, bgcolor]
+                    line += Paint[' (', nil, bgcolor]
+                    line += s.join(Paint[', ', nil, bgcolor])
+                    line += Paint[')', nil, bgcolor]
 #                     print Paint["(#{issue['labels'].sort.join(', ')})", :blue]
                 end
-                puts
+#                 puts line
+                puts indent(wordwrap(line, @screen_width - id_width - 4), id_width + 4, false).strip
             end
         end
+    end
+    
+    def todo
+        list([], :due_date)
     end
 
     def show(id)
@@ -595,9 +781,7 @@ class GitLabIssuesConnectedToGit
         if @issues.include?(id)
             issue = @issues[id]
             l = "[##{id}] #{issue['title']}"
-            puts '-' * 75
-            puts l
-            puts '-' * 75
+            puts cheading(l, '#ffffff')
             puts "Labels:   #{issue['labels'].empty? ? '(none)' : issue['labels'].map { |x| Paint[x, @labels[x]['color']]}.join(', ')}"
             puts "State:    #{issue['state']}"
             puts "Created:  #{issue['created_at'][0, 10]}"
@@ -606,22 +790,14 @@ class GitLabIssuesConnectedToGit
                 puts "Assigned: #{issue['assignee']['name']}"
             end
             if issue['due_date']
-                duration = (DateTime.parse(issue['due_date']) - DateTime.now).to_f.ceil
-                if duration == 0
-                    duration = "today"
-                elsif duration == 1
-                    duration = "tomorrow"
-                elsif duration < 7
-                    duration = "#{duration} days from now"
-                else
-                    duration = "#{duration / 7} weeks from now"
-                end
-                puts "Due date: #{issue['due_date'][0, 10]} (#{duration})"
+                puts "Due date: #{issue['due_date'][0, 10]} (#{duration(issue['due_date'])})"
             end
 #             puts "Updated:  #{issue['updated_at'][0, 10]}"
             puts "URL:      #{issue['web_url']}"
-            puts
-            puts issue['description']
+            unless issue['description'].strip.empty?
+                puts
+                puts wordwrap(issue['description'], @screen_width)
+            end
         else
             STDERR.puts "Error: no issue found with id #{id}."
         end
@@ -720,20 +896,18 @@ gl - GitLab issue tracking intertwined with Git
 Usage: gl <command> [<args>]
 
 Available issue-related commands:
-new           Create a new issue
 list          List issues
+todo          List open issues sorted by due date
 show          Show issue information
-edit          Edit an issue
 start         Start working on an issue
+commit        Commit using an issue, regardless of the current branch
 close         Close an issue
 reopen        Reopen a previously closed issue
-locate        Find commits and corresponding branches for an issue
-commit        Commit using an issue, regardless of the current branch
 
 Miscellaneous commands:
+init          Set up Git hooks
 update        Update issues from GitLab server
 labels        Show available labels
-search        Search for categories or issues
 help          Show usage information
 
 See 'gl help <command>' for more information on a specific command.

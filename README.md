@@ -97,3 +97,19 @@ If you don't want to specify an access token for every project, but want to use 
 
 Everything gl-related is stored in the `.gl` directory. If you want to remove gl from your project, just remove the directory.
 
+## User-specific configuration
+
+You can tell gl a few user-specific configuration values at `.gl/config.user.yaml`. Make sure this file is ignored by Git so your settings won't be transferred to other users.
+
+### Prioritized labels
+
+If you have prioritized labels in your project and you want to see the highest priority labels first when using `gl list`, define them like this:
+
+```
+highlighted_labels:
+  - Bug
+  - Feature
+  - Recurring
+```
+
+That way, first all issues labeled as `Bug` will show up, and of the remaining issues, first all issues labeled as `Feature` will be listed, and so on.
