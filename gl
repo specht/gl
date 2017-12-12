@@ -351,12 +351,12 @@ class GitLabIssuesConnectedToGit
         if File::exist?(@user_config_path)
             assert_ignored_by_git(@user_config_path)
             @user_config = YAML::load(File::read(@user_config_path))
+            @editor = @user_config['editor'] if @user_config['editor']
             if @user_config['features']
                 @global_disable_pager = true unless @user_config['features']['pagination']
                 @global_disable_wordwrap = true unless @user_config['features']['wordwrap']
                 @global_disable_strike = true unless @user_config['features']['strike']
                 Paint.mode = 0 unless @user_config['features']['color']
-
             end
         end
         

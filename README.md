@@ -125,3 +125,11 @@ highlighted_labels:
 ```
 
 That way, first all issues labeled as `Bug` will show up, and of the remaining issues, first all issues labeled as `Feature` will be listed, and so on.
+
+### Miscellaneous options
+
+By default, gl tries to guess your preferred editor from your Git configuration or your `EDITOR` environment variable and if both attempts fail, it falls back to vim. To explicitly set the editor to be used by gl, set the `editor` option:
+
+```
+editor: vim
+```
