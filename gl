@@ -190,7 +190,7 @@ class GitLabIssuesConnectedToGit
                         next
                     end
                     slug = issue['title'].parameterize
-                    ac.option("#{item}-#{slug}", "#{item}-#{slug}")
+                    ac.option("#{item}-#{slug}")
                 end
             end
         end
