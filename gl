@@ -335,6 +335,10 @@ class GitLabIssuesConnectedToGit
             STDERR.puts
             STDERR.puts "$ git add #{@config_path}"
             STDERR.puts "$ git commit -m 'added gl configuration'"
+            STDERR.puts ""
+            STDERR.puts "Because of the installed Git hooks, you cannot commit without referencing an issue now."
+            STDERR.puts "Here's a suggestion: create a 'repository maintenance' issue in GitLab, then run"
+            STDERR.puts "`gl update` and commit to it using `gl commit [issue id]`."
 
             FileUtils::mkpath(File::dirname(@config_path))
 
