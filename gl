@@ -256,7 +256,6 @@ class GitLabIssuesConnectedToGit
                 relative_path = Pathname.new(path).relative_path_from(Pathname.new(File::join(@project_root, '..'))).to_s
                 gitignore_path = Pathname.new(File.join(@project_root, '..', '.gitignore')).relative_path_from(Pathname.new($pwd)).to_s
                 io.puts "$ echo '#{relative_path}' >> #{gitignore_path}"
-                io.puts "$ git add #{gitignore_path} && git commit -m '.gitignore update for gl'"
             end
         end
     end
