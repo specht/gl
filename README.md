@@ -101,6 +101,18 @@ Everything gl-related is stored in the `.gl` directory. If you want to remove gl
 
 You can tell gl a few user-specific configuration values at `.gl/config.user.yaml`. Make sure this file is ignored by Git so your settings won't be transferred to other users.
 
+### Gl features
+
+By default, all of the following features are enabled. If you run into problems with some of them or don't like them, turn them off:
+
+```
+features:
+  color: false       # use colors (if the paint gem is installed)
+  pagination: false  # use auto-pagination if the output is larger than the terminal
+  strike: false      # strike through closed issues using Unicode
+  wordwrap: false    # wrap long lines
+```
+
 ### Prioritized labels
 
 If you have prioritized labels in your project and you want to see the highest priority labels first when using `gl list`, define them like this:
