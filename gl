@@ -123,7 +123,6 @@ class GitLabIssuesConnectedToGit
                 add_autocomplete_options_for_issue_slugs(ac, :issue)
                 ac.handler do |args|
                     issue = current_issue_or_from_args(args)
-                    run_pager()
                     commit(issue, args[1, args.size - 1])
                 end
             end
