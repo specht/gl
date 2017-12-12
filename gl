@@ -736,7 +736,7 @@ class GitLabIssuesConnectedToGit
 #             puts "Updated:  #{issue['updated_at'][0, 10]}"
             puts "URL:      #{issue['web_url']}"
             unless issue['description'].strip.empty?
-                puts
+                puts Paint['-' * @screen_width, '#ffffff']
                 puts wordwrap(issue['description'], @screen_width)
             end
         else

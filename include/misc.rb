@@ -78,6 +78,9 @@ module Miscellaneous
             end
             result += span[0]
             line_length += span[1]
+            if span[0].include?("\n")
+                line_length = span[0].size - span[0].rindex("\n")
+            end
         end
         result
     end
