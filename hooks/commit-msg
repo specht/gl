@@ -1,0 +1,7 @@
+#!/usr/bin/env ruby
+
+message = File::read(ARGV.first)
+unless message.index('Merge branch') == 0 || message =~ /\[#\d+\]/
+    puts "[gl] Error: Cancelling commit due to missing issue reference in commit message."
+    exit(1)
+end

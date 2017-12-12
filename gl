@@ -10,7 +10,8 @@ require 'tempfile'
 require 'uri'
 require 'yaml'
 
-$: << File.dirname(File.realpath($0))
+SCRIPT_DIR = File.dirname(File.realpath($0))
+$: << SCRIPT_DIR
 require 'include/pager'
 require 'include/cli-dispatcher'
 
@@ -340,6 +341,20 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
+    
+    def git_hooks_in_place?
+        Dir[File.join(SCRIPT_DIR, 'hooks', '*')].each do |hook|
+            # check if hook exists
+            unless File.exist?(File.join(@hook_path, File.basename(hook)))
+                return false
+            end
+            # check if hook is up to date
+            unless File.read(File.join(@hook_path, File.basename(hook))) == File.read(hook)
+                return false
+            end
+        end
+        true
+    end
 
     def setup
         @project_root = Dir::pwd
@@ -354,9 +369,9 @@ class GitLabIssuesConnectedToGit
 
         @project_root = File::join(@project_root, '.gl')
 
-        @hook_path = File::join(@project_root, '..', '.git', 'hooks', 'prepare-commit-msg')
-
-        unless File::exist?(@hook_path)
+        @hook_path = File::join(@project_root, '..', '.git', 'hooks')
+        
+        unless git_hooks_in_place?
             unless ARGV.first == 'init'
                 STDERR.puts "Error: Git hooks not initialized. Please run 'gl init'."
                 STDERR.puts "If you're just installing gl on your machine, you might want to create the following symlink:"
@@ -504,12 +519,14 @@ class GitLabIssuesConnectedToGit
     end
 
     def init()
-        FileUtils::mkpath(File::dirname(@hook_path))
-        File::open(@hook_path, 'w') do |f|
-            f.write DATA.read
+        FileUtils::mkpath(@hook_path)
+        Dir[File.join(SCRIPT_DIR, 'hooks', '*')].each do |hook|
+            File::open(File.join(@hook_path, File.basename(hook)), 'w') do |f|
+                f.write File.read(hook)
+            end
+            system("chmod +x \'#{File.join(@hook_path, File.basename(hook))}\'")
+            STDERR.puts "Successfully installed Git #{File.basename(hook)} hook."
         end
-        system("chmod +x \'#{@hook_path}\'")
-        STDERR.puts "Successfully installed Git prepare-commit-msg hook."
     end
 
     def gitlab_get(url)
@@ -977,17 +994,4 @@ begin
 #     script.run
 ensure
     Dir.chdir($pwd)
-end
-
-__END__
-#!/usr/bin/env ruby
-
-template = File::read(ARGV.first)
-unless template.index('Merge branch') == 0
-    message = `gl commit-message`
-
-    File::open(ARGV.first, 'w') do |f|
-        f.puts message
-        f.write(template)
-    end
 end

@@ -1,0 +1,11 @@
+#!/usr/bin/env ruby
+
+template = File::read(ARGV.first)
+unless template.index('Merge branch') == 0 || template =~ /\[#\d+\]/
+    message = `gl commit-message`
+
+    File::open(ARGV.first, 'w') do |f|
+        f.puts message
+        f.write(template)
+    end
+end
