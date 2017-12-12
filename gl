@@ -493,6 +493,13 @@ class GitLabIssuesConnectedToGit
                 break
             end
         end
+        # if GitLab returns an error, we get something like this:
+        # {"message":"404 Project Not Found"}
+        # TODO: Check HTTP response status code instead of just whether there's a message.
+        if (data.is_a? Hash) && data['message']
+            puts "\rError: #{data['message']}"
+            exit(1)
+        end
         data
     end
     
