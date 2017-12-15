@@ -28,9 +28,9 @@ rescue LoadError
 end
 
 class GitLabIssuesConnectedToGit
-    
+
     include Miscellaneous
-    
+
     def initialize
         # first try editor configured by Git
         @editor = `git config core.editor`
@@ -41,25 +41,25 @@ class GitLabIssuesConnectedToGit
         @editor ||= 'nano'
 
         # try to determine screen width
-        @screen_width = nil        
+        @screen_width = nil
         temp = `stty size 2> /dev/null`
         if $?.exitstatus == 0
             @screen_width = temp.strip.split(' ')[1].strip.to_i
         end
         # default: 80 columns
         @screen_width ||= 80
-        
+
         CliDispatcher::launch do |ac|
             ac.option('help') do |ac|
-                ['list', 'todo', 'show', 'start', 'close', 'reopen', 
+                ['list', 'todo', 'show', 'edit', 'start', 'close', 'reopen',
                  'commit', 'init', 'update', 'labels'].each do |x|
                     ac.option(x)
                 end
                 ac.handler { |args| run_pager(); show_help(args) }
             end
-            
+
             # Issue commands
-            
+
             ac.option('list', nil, true) do |ac, collected_parts|
                 setup
                 ac.option('--all')
@@ -67,25 +67,33 @@ class GitLabIssuesConnectedToGit
                 add_autocomplete_options_for_labels(ac)
                 ac.handler { |args| run_pager(); list(args) }
             end
-            
+
             ac.option('todo') do |ac|
                 setup
                 ac.handler { |args| run_pager(); todo }
             end
-            
+
             ac.option('show') do |ac|
                 setup
                 add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
                 add_autocomplete_options_for_issue_slugs(ac, :issue)
-#                 add_autocomplete_options_for_issues(ac, :open_issue) do |ac|
-                    ac.handler do |args|
-                        issue = current_issue_or_from_args(args)
-                        run_pager()
-                        show(issue)
-                    end
-#                 end
+                ac.handler do |args|
+                    issue = current_issue_or_from_args(args)
+                    run_pager()
+                    show(issue)
+                end
             end
-                
+
+            ac.option('edit') do |ac|
+                setup
+                add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
+                add_autocomplete_options_for_issue_slugs(ac, :issue)
+                ac.handler do |args|
+                    issue = current_issue_or_from_args(args)
+                    edit(issue)
+                end
+            end
+
             ac.option('start') do |ac|
                 setup
                 add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
@@ -96,27 +104,27 @@ class GitLabIssuesConnectedToGit
                     start(issue)
                 end
             end
-                
+
             ac.option('close') do |ac|
                 setup
                 add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
                 add_autocomplete_options_for_issue_slugs(ac, :open_issue)
-                ac.handler do |args| 
+                ac.handler do |args|
                     issue = current_issue_or_from_args(args)
                     close_issue(issue)
                 end
             end
-                
+
             ac.option('reopen') do |ac|
                 setup
                 add_autocomplete_options_for_issue_slug_parts(ac, :closed_issue)
                 add_autocomplete_options_for_issue_slugs(ac, :closed_issue)
-                ac.handler do |args| 
+                ac.handler do |args|
                     issue = current_issue_or_from_args(args)
                     reopen_issue(issue)
                 end
             end
-                
+
             ac.option('commit') do |ac|
                 setup
                 add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
@@ -126,7 +134,7 @@ class GitLabIssuesConnectedToGit
                     commit(issue, args[1, args.size - 1])
                 end
             end
-            
+
             ac.secret_option('commit-message') do |ac|
                 setup
                 ac.handler { |args| commit_message }
@@ -136,12 +144,12 @@ class GitLabIssuesConnectedToGit
                 setup
                 ac.handler { |args| init }
             end
-            
+
             ac.option('update') do |ac|
                 setup
                 ac.handler { |args| update }
             end
-            
+
             ac.option('labels') do |ac|
                 setup
                 ac.handler { |args| labels }
@@ -149,7 +157,7 @@ class GitLabIssuesConnectedToGit
         end
         puts "Unknown command: #{ARGV.first}. Try 'gl help' for a list of possible commands."
     end
-    
+
     def add_autocomplete_options_for_labels(ac)
         @tokens_by_type[:label].each do |token|
             @tokens[token].each do |item|
@@ -159,7 +167,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def add_autocomplete_options_for_issue_slug_parts(ac, which = :issue)
         # let slug parts expand to full issue identifiers for issues
         @tokens_by_type[which].each do |token|
@@ -178,7 +186,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def add_autocomplete_options_for_issue_slugs(ac, which = :issue)
         # also auto-complete all full issue identifiers (open or closed)
         @tokens_by_type[which].each do |token|
@@ -201,31 +209,31 @@ class GitLabIssuesConnectedToGit
 
     def current_issue_or_from_args(args)
         issue = nil
-        
+
         if args.first
             issue = args.first
         else
             issue = `git rev-parse --abbrev-ref HEAD`.strip[0, 6]
         end
-        
+
         if issue.split('-').first =~ /^\d+$/
             issue = issue.split('-').first.to_i
         else
             issue = nil
         end
-        
+
         unless issue
             puts "Error: No issue specified (and also not currently in an issue branch)."
             exit(1)
         end
         issue
     end
-    
+
     def cmul(c, f)
         return nil if c.nil?
         sprintf('#%02x%02x%02x', *((0..3).map { |i| (c[i * 2 + 1, 2].to_i(16).to_f * f).to_i }))
     end
-    
+
     def warning(&block)
         STDERR.puts Paint['-' * 75, :red]
         io = StringIO.new
@@ -262,7 +270,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def git_hooks_in_place?
         Dir[File.join(SCRIPT_DIR, 'hooks', '*')].each do |hook|
             # check if hook exists
@@ -291,7 +299,7 @@ class GitLabIssuesConnectedToGit
         @project_root = File::join(@project_root, '.gl')
 
         @hook_path = File::join(@project_root, '..', '.git', 'hooks')
-        
+
         unless git_hooks_in_place?
             unless ARGV.first == 'init'
                 STDERR.puts "Error: Git hooks not initialized. Please run 'gl init'."
@@ -365,7 +373,7 @@ class GitLabIssuesConnectedToGit
                 Paint.mode = 0 unless @user_config['features']['color']
             end
         end
-        
+
         @private_token_path_repository = File::join(@project_root, 'private_token')
         @private_token_path_user = File::join(Dir.home, '.gl_private_token')
         if File.exist?(@private_token_path_repository)
@@ -461,78 +469,73 @@ class GitLabIssuesConnectedToGit
         end
     end
 
-    def gitlab_get(url)
-        page = 1
+    def gitlab_curl(method, url, data = nil)
+        # returns: {:status => 200, :body => '', :headers => {}}
+        # curl --write-out %{http_code} --silent --output out URL
+        response_body_path = Dir::Tmpname.create('gl-curl-response-body') {}
+        response_headers_path = Dir::Tmpname.create('gl-curl-response-headers') {}
+
+        command = "curl --request #{method} -H 'Content-Type: application/json' --header 'PRIVATE-TOKEN: #{@token}' #{data ? '-d @-' : ''} --write-out %{http_code} --silent --output '#{response_body_path}' -D '#{response_headers_path}' '#{@project_uri}/#{url}'"
+        stdin, stdout, stderr, thread = Open3.popen3(command)
+        stdin.write(data.to_json) if data
+        stdin.close
+        exit_code = thread.value.exitstatus
         data = nil
-        loop do
-            header_path = Dir::Tmpname.create('gl-curl-response-headers') {}
-            command = "curl -D \"#{header_path}\" -sS --header 'PRIVATE-TOKEN: #{@token}' '#{@project_uri}/#{url}/?per_page=100&page=#{page}'"
-            stdin, stdout, stderr, thread = Open3.popen3(command)
-            stdin.close
-            exit_code = thread.value.exitstatus
-            if exit_code == 0
-                body = stdout.read
-                new_data = JSON::parse(body)
-                if data.nil?
-                    data = new_data
-                else
-                    data += new_data
-                end
-            else
-                STDERR.print "\r"
-                STDERR.puts stderr.read
-                exit(1)
-            end
-            stdout.close
-            stderr.close
+        if exit_code == 0
             headers = {}
-            File::read(header_path).split("\n").each do |x|
+            File::read(response_headers_path).split("\n").each do |x|
                 colon_index = x.index(':')
                 next unless colon_index
                 key = x[0, colon_index].strip
                 value = x[colon_index + 1, x.size].strip
                 headers[key] = value
             end
-            if headers['X-Page'] && headers['X-Page'].to_i < headers['X-Total-Pages'].to_i
-                page += 1
-            else
-                break
+            result = {
+                :status => stdout.read.strip.to_i,
+                :body => File::read(response_body_path),
+                :headers => headers
+            }
+            stdout.close
+            stderr.close
+            if method == 'GET' && result[:status] != 200
+                STDERR.print "\r"
+                STDERR.puts "Error: HTTP 404 Not Found"
+                STDERR.puts "on HTTP #{method} #{@project_uri}/#{url}"
+                exit(1)
             end
-        end
-        # if GitLab returns an error, we get something like this:
-        # {"message":"404 Project Not Found"}
-        # TODO: Check HTTP response status code instead of just whether there's a message.
-        if (data.is_a? Hash) && data['message']
-            puts "\rError: #{data['message']}"
-            exit(1)
-        end
-        data
-    end
-    
-    def gitlab_put(url)
-        command = "curl --request PUT -sS --header 'PRIVATE-TOKEN: #{@token}' '#{@project_uri}/#{url}'"
-        stdin, stdout, stderr, thread = Open3.popen3(command)
-        stdin.close
-        exit_code = thread.value.exitstatus
-        data = nil
-        if exit_code == 0
-            body = stdout.read
-            data = JSON::parse(body)
+            result
         else
             STDERR.print "\r"
             STDERR.puts stderr.read
             exit(1)
         end
-        stdout.close
-        stderr.close
+    end
+
+    def gitlab_get(url)
+        page = 1
+        data = nil
+        loop do
+            result = gitlab_curl('GET', url + "/?per_page=100&page=#{page}")
+            new_data = JSON.parse(result[:body])
+            if data.nil?
+                data = new_data
+            else
+                data += new_data
+            end
+
+            if result[:headers]['X-Page'] && result[:headers]['X-Page'].to_i < result[:headers]['X-Total-Pages'].to_i
+                page += 1
+            else
+                break
+            end
+        end
         data
     end
-    
-#     def new_issue(args)
-#         STDERR.puts args.to_yaml
-#         raise 'oops'
-#     end
-    
+
+    def gitlab_put(url, data = nil)
+        JSON.parse(gitlab_curl('PUT', url, data)[:body])
+    end
+
     def idle_spinner(&block)
         idle_spinner_thread = Thread.new do
             loop do
@@ -547,7 +550,7 @@ class GitLabIssuesConnectedToGit
         idle_spinner_thread.kill
         STDERR.print "\r"
     end
-    
+
     def update_issue(issue)
         # update a single issue in the state file
         state = YAML::load(File::read(@state_path))
@@ -556,16 +559,22 @@ class GitLabIssuesConnectedToGit
             f.write state.to_yaml
         end
     end
-    
-    def close_issue(args)
+
+    def close_issue(id)
+        unless @issues.include?(id)
+            raise "Unknown issue: #{id}"
+        end
         idle_spinner do
-            update_issue(gitlab_put("issues/#{args}?state_event=close"))
+            update_issue(gitlab_put("issues/#{id}?state_event=close"))
         end
     end
 
-    def reopen_issue(args)
+    def reopen_issue(id)
+        unless @issues.include?(id)
+            raise "Unknown issue: #{id}"
+        end
         idle_spinner do
-            update_issue(gitlab_put("issues/#{args}?state_event=reopen"))
+            update_issue(gitlab_put("issues/#{id}?state_event=reopen"))
         end
     end
 
@@ -594,10 +603,10 @@ class GitLabIssuesConnectedToGit
             end
         end
         t2.run
-        
+
         t1.join
         t2.join
-        
+
         issues_by_status = {}
         @issues.values.each do |issue|
             issues_by_status[issue['state']] ||= 0
@@ -631,7 +640,7 @@ class GitLabIssuesConnectedToGit
         end
         show_labels = Set.new(args.select { |x| x[0] != '-' })
         id_width = @issues.keys.max.to_s.size
-        label_order = [] 
+        label_order = []
         if show_labels.empty? && @user_config && @user_config['highlighted_labels']
             label_order = @user_config['highlighted_labels']
         end
@@ -718,7 +727,7 @@ class GitLabIssuesConnectedToGit
             end
         end
     end
-    
+
     def todo
         list([], :due_date)
     end
@@ -744,6 +753,41 @@ class GitLabIssuesConnectedToGit
             unless issue['description'].strip.empty?
                 puts Paint['-' * @screen_width, '#ffffff']
                 puts wordwrap(issue['description'], @screen_width)
+            end
+        else
+            STDERR.puts "Error: no issue found with id #{id}."
+        end
+    end
+
+    def call_editor(template)
+        file = Tempfile.new('gl')
+        contents = ''
+        begin
+            File::open(file.path, 'w') do |f|
+                f.write(template)
+            end
+            system("#{@editor} #{file.path}")
+            File::open(file.path, 'r') do |f|
+                contents = f.read()
+            end
+        ensure
+            file.close
+            file.unlink
+        end
+        return contents
+    end
+
+    def edit(id)
+        if @issues.include?(id)
+            issue = @issues[id]
+            before = issue['description'].strip
+            after = call_editor(before).strip
+            if before != after
+                idle_spinner do
+                    update_issue(gitlab_put("issues/#{id}", {:description => after}))
+                end
+            else
+                puts "Leaving issue ##{id} unchanged: #{issue['title']}"
             end
         else
             STDERR.puts "Error: no issue found with id #{id}."
@@ -846,6 +890,7 @@ Available issue-related commands:
 list          List issues
 todo          List open issues sorted by due date
 show          Show issue information
+edit          Edit issue description
 start         Start working on an issue
 commit        Commit using an issue, regardless of the current branch
 close         Close an issue
@@ -883,15 +928,15 @@ denoted by the branch name.
 __edit
 Usage: gl edit [<issue>]
 
-Edit an issue. If no issue is specified, show the current issue as denoted by 
+Edit an issue. If no issue is specified, show the current issue as denoted by
 the branch name.
 
 __start
 Usage: gl start <issue>
 
-Start working on an issue. gl will create a topic branch for the specified issue 
-using the same naming convention as GitLab. The branch name starts with the issue 
-ID followed by a dash, and through this pattern the git hooks set up by gl are 
+Start working on an issue. gl will create a topic branch for the specified issue
+using the same naming convention as GitLab. The branch name starts with the issue
+ID followed by a dash, and through this pattern the git hooks set up by gl are
 able to determine which issue all commits made in this branch should be connected to.
 
 __close
