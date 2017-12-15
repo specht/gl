@@ -475,7 +475,7 @@ class GitLabIssuesConnectedToGit
         response_body_path = Dir::Tmpname.create('gl-curl-response-body') {}
         response_headers_path = Dir::Tmpname.create('gl-curl-response-headers') {}
 
-        command = "curl --request #{method} -H 'Content-Type: application/json' --header 'PRIVATE-TOKEN: #{@token}' #{data ? '-d @-' : ''} --write-out %{http_code} --silent --output '#{response_body_path}' -D '#{response_headers_path}' '#{@project_uri}/#{url}'"
+        command = "curl --request #{method} -H 'Content-Type: application/json' --header 'PRIVATE-TOKEN: #{@token}' #{data ? '-d @-' : ''} --write-out %{http_code} -sS --output '#{response_body_path}' -D '#{response_headers_path}' '#{@project_uri}/#{url}'"
         stdin, stdout, stderr, thread = Open3.popen3(command)
         stdin.write(data.to_json) if data
         stdin.close
