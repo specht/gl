@@ -52,7 +52,7 @@ class GitLabIssuesConnectedToGit
         CliDispatcher::launch do |ac|
             ac.option('help') do |ac|
                 ['list', 'todo', 'show', 'edit', 'start', 'close', 'reopen',
-                 'commit', 'init', 'update', 'labels'].each do |x|
+                 'commit', 'init', 'update', 'labels', 'whoami'].each do |x|
                     ac.option(x)
                 end
                 ac.handler { |args| run_pager(); show_help(args) }
@@ -153,6 +153,11 @@ class GitLabIssuesConnectedToGit
             ac.option('labels') do |ac|
                 setup
                 ac.handler { |args| labels }
+            end
+
+            ac.option('whoami') do |ac|
+                setup
+                ac.handler { |args| whoami }
             end
         end
         puts "Unknown command: #{ARGV.first}. Try 'gl help' for a list of possible commands."
@@ -469,13 +474,18 @@ class GitLabIssuesConnectedToGit
         end
     end
 
-    def gitlab_curl(method, url, data = nil)
+    def gitlab_curl(method, url, data = nil, special_url = nil)
         # returns: {:status => 200, :body => '', :headers => {}}
         # curl --write-out %{http_code} --silent --output out URL
         response_body_path = Dir::Tmpname.create('gl-curl-response-body') {}
         response_headers_path = Dir::Tmpname.create('gl-curl-response-headers') {}
 
-        command = "curl --request #{method} -H 'Content-Type: application/json' --header 'PRIVATE-TOKEN: #{@token}' #{data ? '-d @-' : ''} --write-out %{http_code} -sS --output '#{response_body_path}' -D '#{response_headers_path}' '#{@project_uri}/#{url}'"
+        command = "curl --request #{method} -H 'Content-Type: application/json' --header 'PRIVATE-TOKEN: #{@token}' #{data ? '-d @-' : ''} --write-out %{http_code} -sS --output '#{response_body_path}' -D '#{response_headers_path}' "
+        if special_url
+            command += "'#{special_url}'"
+        else
+            command += "'#{@project_uri}/#{url}'"
+        end
         stdin, stdout, stderr, thread = Open3.popen3(command)
         stdin.write(data.to_json) if data
         stdin.close
@@ -534,6 +544,10 @@ class GitLabIssuesConnectedToGit
 
     def gitlab_put(url, data = nil)
         JSON.parse(gitlab_curl('PUT', url, data)[:body])
+    end
+
+    def get_user()
+        JSON.parse(gitlab_curl('GET', nil, {}, @project_uri.split('/api/v4').first + '/api/v4/user')[:body])
     end
 
     def idle_spinner(&block)
@@ -631,7 +645,7 @@ class GitLabIssuesConnectedToGit
         update unless File::exist?(@state_path)
     end
 
-    def list(args = [], sort_by = nil)
+    def list(args = [], sort_by = nil, filter_by = nil)
         show_states = ['opened']
         if args.include?('--all')
             show_states = ['opened', 'closed']
@@ -647,6 +661,10 @@ class GitLabIssuesConnectedToGit
         label_set = Set.new(label_order)
         previous_label_index = nil
         previous_due_date = nil
+        current_user = nil
+        if filter_by == :current_user
+            current_user = get_user['id']
+        end
         @issues.keys.sort do |a, b|
             if sort_by.nil?
                 unless label_order.empty?
@@ -666,6 +684,14 @@ class GitLabIssuesConnectedToGit
                     ddb = @issues[b]['due_date'] || '9999-99-99'
                     dda <=> ddb
                 end
+            end
+        end.select do |id|
+            if filter_by
+                if filter_by == :current_user
+                    @issues[id]['assignees'].map { |x| x['id'] }.include?(current_user)
+                end
+            else
+                true
             end
         end.each do |id|
             issue = @issues[id]
@@ -729,7 +755,7 @@ class GitLabIssuesConnectedToGit
     end
 
     def todo
-        list([], :due_date)
+        list([], :due_date, :current_user)
     end
 
     def show(id)
@@ -864,6 +890,12 @@ class GitLabIssuesConnectedToGit
         end
     end
 
+    def whoami()
+        user = get_user
+        puts "Name : #{user['name']} (#{user['username']})"
+        puts "Email: #{user['email']}"
+    end
+
     def show_help(args)
         items = HELP_TEXT.strip.split(/^__(.+)$/)
         items.shift
@@ -888,7 +920,7 @@ Usage: gl <command> [<args>]
 
 Available issue-related commands:
 list          List issues
-todo          List open issues sorted by due date
+todo          List your open issues sorted by due date
 show          Show issue information
 edit          Edit issue description
 start         Start working on an issue
@@ -900,6 +932,7 @@ Miscellaneous commands:
 init          Set up Git hooks
 update        Update issues from GitLab server
 labels        Show available labels
+whoami        Show user information referenced by private token
 help          Show usage information
 
 See 'gl help <command>' for more information on a specific command.

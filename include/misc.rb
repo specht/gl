@@ -27,7 +27,7 @@ module Miscellaneous
         pager = ENV['PAGER'] || 'less'
         exec pager rescue exec "/bin/sh", "-c", pager
     end
-    
+
     def wordwrap(s, max_length = 80)
         return s if @global_disable_wordwrap
         in_escape_sequence = false
@@ -54,10 +54,10 @@ module Miscellaneous
             end
         end
         parts.flatten!
-        parts.map! do |part| 
-            [part, 
-            part[0].ord == 0x1b ? 0 : part.size, 
-            part[0].ord == 0x1b ? false : !!(part[-1] =~ /\s/) 
+        parts.map! do |part|
+            [part,
+            part[0].ord == 0x1b ? 0 : part.size,
+            part[0].ord == 0x1b ? false : !!(part[-1] =~ /\s/)
             ]
         end
         spans = [['', 0]]
@@ -99,13 +99,17 @@ module Miscellaneous
         d = (DateTime.parse(date) - DateTime.now).to_f.ceil
         if d < 0
             d = d.abs
-            if d < 7
+            if d == 1
+                "yesterday"
+            elsif d < 7
                 "#{d} days ago"
             else
                 "#{d / 7} weeks ago"
             end
         elsif d > 0
-            if d < 7
+            if d == 1
+                "tomorrow"
+            elsif d < 7
                 "#{d} days from now"
             else
                 "#{d / 7} weeks from now"
