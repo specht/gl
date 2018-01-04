@@ -52,7 +52,7 @@ class GitLabIssuesConnectedToGit
         CliDispatcher::launch do |ac|
             ac.option('help') do |ac|
                 ['list', 'todo', 'show', 'edit', 'start', 'close', 'reopen',
-                 'commit', 'init', 'update', 'labels', 'whoami'].each do |x|
+                 'commit', 'init', 'update', 'labels', 'whoami', 'search'].each do |x|
                     ac.option(x)
                 end
                 ac.handler { |args| run_pager(); show_help(args) }
@@ -158,6 +158,11 @@ class GitLabIssuesConnectedToGit
             ac.option('whoami') do |ac|
                 setup
                 ac.handler { |args| whoami }
+            end
+
+            ac.option('search') do |ac|
+                setup
+                ac.handler { |args| search(args) }
             end
         end
         puts "Unknown command: #{ARGV.first}. Try 'gl help' for a list of possible commands."
@@ -645,6 +650,32 @@ class GitLabIssuesConnectedToGit
         update unless File::exist?(@state_path)
     end
 
+    def issue_to_line(issue, id_width = 1)
+        id = issue['iid']
+        color = :default
+        bgcolor = :default
+        id_s = "[##{id}]"
+        if issue['state'] == 'closed'
+            id_s = unicode_strike_through(id_s)
+            color = '#666'
+            bgcolor = '#222'
+        end
+        line = Paint["#{' ' * [0, (id_width - id.to_s.size)].max}#{id_s} #{issue['title']}", color, bgcolor]
+        unless issue['labels'].empty?
+            s = issue['labels'].sort.map do |label|
+                color = nil
+                if @labels.include?(label)
+                    color = @labels[label]['color']
+                end
+                Paint[label.gsub(' ', "\u00a0"), color, bgcolor]
+            end
+            line += Paint[' (', nil, bgcolor]
+            line += s.join(Paint[', ', nil, bgcolor])
+            line += Paint[')', nil, bgcolor]
+        end
+        indent(wordwrap(line, @screen_width - id_width - 4), id_width + 4, false).strip
+    end
+
     def list(args = [], sort_by = nil, filter_by = nil)
         show_states = ['opened']
         if args.include?('--all')
@@ -695,62 +726,38 @@ class GitLabIssuesConnectedToGit
             end
         end.each do |id|
             issue = @issues[id]
-            if show_states.include?(issue['state'])
-                if sort_by.nil?
-                    unless label_order.empty?
-                        present_labels = Set.new(@issues[id]['labels']) & label_set
-                        first_order = present_labels.empty? ? label_order.size : present_labels.map { |x| label_order.index(x) }.min
-                        if first_order < label_order.size
-                            label = label_order[first_order]
-                            color = @labels[label]['color']
-                        else
-                            label = 'Other'
-                            color = '#aaaaaa'
-                        end
-                        if first_order != previous_label_index
-                            puts cheading(label, color)
-                            previous_label_index = first_order
-                        end
+            next unless show_states.include?(issue['state'])
+            if sort_by.nil?
+                unless label_order.empty?
+                    present_labels = Set.new(@issues[id]['labels']) & label_set
+                    first_order = present_labels.empty? ? label_order.size : present_labels.map { |x| label_order.index(x) }.min
+                    if first_order < label_order.size
+                        label = label_order[first_order]
+                        color = @labels[label]['color']
+                    else
+                        label = 'Other'
+                        color = '#aaaaaa'
                     end
-                else
-                    due_date = issue['due_date']
-                    if previous_due_date != due_date
-                        previous_due_date = due_date
-                        if due_date.nil?
-                            puts cheading('No due date', '#aaaaaa')
-                        else
-                            puts cheading("Due date: #{due_date} (#{duration(due_date)})", '#ff0000')
-                        end
+                    if first_order != previous_label_index
+                        puts cheading(label, color)
+                        previous_label_index = first_order
                     end
                 end
-                unless show_labels.empty?
-                    next if (Set.new(issue['labels'].map { |x| x.parameterize }) & show_labels).empty?
-                end
-                color = :default
-                bgcolor = :default
-                id_s = "[##{id}]"
-                if issue['state'] == 'closed'
-                    id_s = unicode_strike_through(id_s)
-                    color = '#666'
-                    bgcolor = '#222'
-                end
-                line = Paint["#{' ' * (id_width - id.to_s.size)}#{id_s} #{issue['title']}", color, bgcolor]
-                unless issue['labels'].empty?
-                    s = issue['labels'].sort.map do |label|
-                        color = nil
-                        if @labels.include?(label)
-                            color = @labels[label]['color']
-                        end
-                        Paint[label.gsub(' ', "\u00a0"), color, bgcolor]
+            else
+                due_date = issue['due_date']
+                if previous_due_date != due_date
+                    previous_due_date = due_date
+                    if due_date.nil?
+                        puts cheading('No due date', '#aaaaaa')
+                    else
+                        puts cheading("Due date: #{due_date} (#{duration(due_date)})", '#ff0000')
                     end
-                    line += Paint[' (', nil, bgcolor]
-                    line += s.join(Paint[', ', nil, bgcolor])
-                    line += Paint[')', nil, bgcolor]
-#                     print Paint["(#{issue['labels'].sort.join(', ')})", :blue]
                 end
-#                 puts line
-                puts indent(wordwrap(line, @screen_width - id_width - 4), id_width + 4, false).strip
             end
+            unless show_labels.empty?
+                next if (Set.new(issue['labels'].map { |x| x.parameterize }) & show_labels).empty?
+            end
+            puts issue_to_line(issue, id_width)
         end
     end
 
@@ -896,6 +903,22 @@ class GitLabIssuesConnectedToGit
         puts "Email: #{user['email']}"
     end
 
+    def search(keywords)
+        keywords.map! { |x| x.downcase }
+        @issues.each_pair do |id, issue|
+            found = false
+            keywords.each do |kw|
+                if issue['title'].downcase.include?(kw) || issue['description'].downcase.include?(kw)
+                    found = true
+                    break
+                end
+            end
+            if found
+                puts issue_to_line(issue)
+            end
+        end
+    end
+
     def show_help(args)
         items = HELP_TEXT.strip.split(/^__(.+)$/)
         items.shift
@@ -933,6 +956,7 @@ init          Set up Git hooks
 update        Update issues from GitLab server
 labels        Show available labels
 whoami        Show user information referenced by private token
+search        Search for issues
 help          Show usage information
 
 See 'gl help <command>' for more information on a specific command.
