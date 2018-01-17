@@ -422,6 +422,7 @@ class GitLabIssuesConnectedToGit
         data = YAML::load(File::read(@state_path))
         @issues = data[:issues]
         @labels = data[:labels]
+        @user = data[:user]
         @tokens = {}
         @tokens_by_type = {
             :label => Set.new(),
@@ -622,9 +623,14 @@ class GitLabIssuesConnectedToGit
             end
         end
         t2.run
+        t3 = Thread.new do
+            @user = get_user
+        end
+        t3.run
 
         t1.join
         t2.join
+        t3.join
 
         issues_by_status = {}
         @issues.values.each do |issue|
@@ -640,6 +646,7 @@ class GitLabIssuesConnectedToGit
             data = {}
             data[:issues] = @issues
             data[:labels] = @labels
+            data[:user] = @user
             f.write data.to_yaml
         end
 
@@ -694,7 +701,7 @@ class GitLabIssuesConnectedToGit
         previous_due_date = nil
         current_user = nil
         if filter_by == :current_user
-            current_user = get_user['id']
+            current_user = @user['id']
         end
         @issues.keys.sort do |a, b|
             if sort_by.nil?
@@ -898,9 +905,8 @@ class GitLabIssuesConnectedToGit
     end
 
     def whoami()
-        user = get_user
-        puts "Name : #{user['name']} (#{user['username']})"
-        puts "Email: #{user['email']}"
+        puts "Name : #{@user['name']} (#{@user['username']})"
+        puts "Email: #{@user['email']}"
     end
 
     def search(keywords)
