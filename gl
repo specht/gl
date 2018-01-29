@@ -883,8 +883,6 @@ class GitLabIssuesConnectedToGit
             else
                 puts "# Error: no issue found with id #{id}."
             end
-        else
-            puts "# You're not in a topic branch. :-("
         end
     end
 
