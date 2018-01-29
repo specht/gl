@@ -87,7 +87,18 @@ Detailed explanations go here...
 - Optionally install Paint for colored output: `gem install paint`
 - Clone the repository
 - Run ./gl and follow the instructions to create a symlink.
-- You may also want to setup Tab completion for BASH: `complete -C gl -o default gl`
+- You may also want to setup Tab completion for BASH: `complete -C gl -o default gl` and ZSH:
+
+```{zsh}
+_glcompleter() {
+    read -l
+    local cl="$REPLY"
+    read -ln
+    local cp="$REPLY"
+    reply=(`COMP_LINE="$cl" COMP_POINT="$cp" gl`)
+}
+compctl -K _glcompleter gl
+```
 
 ### Shared access token
 
