@@ -51,8 +51,9 @@ class GitLabIssuesConnectedToGit
 
         CliDispatcher::launch do |ac|
             ac.option('help') do |ac|
-                ['list', 'todo', 'show', 'edit', 'start', 'close', 'reopen',
-                 'commit', 'init', 'update', 'labels', 'whoami', 'search'].each do |x|
+                ['list', 'todo', 'show', 'locate', 'edit', 'start', 'close',
+                 'reopen', 'commit', 'init', 'update', 'labels', 'whoami',
+                 'search'].each do |x|
                     ac.option(x)
                 end
                 ac.handler { |args| run_pager(); show_help(args) }
@@ -81,6 +82,17 @@ class GitLabIssuesConnectedToGit
                     issue = current_issue_or_from_args(args)
                     run_pager()
                     show(issue)
+                end
+            end
+
+            ac.option('locate') do |ac|
+                setup
+                add_autocomplete_options_for_issue_slug_parts(ac, :open_issue)
+                add_autocomplete_options_for_issue_slugs(ac, :issue)
+                ac.handler do |args|
+                    issue = current_issue_or_from_args(args)
+                    run_pager()
+                    locate(issue)
                 end
             end
 
@@ -799,6 +811,25 @@ class GitLabIssuesConnectedToGit
         end
     end
 
+    def locate(id)
+        update_if_necessary
+        if @issues.include?(id)
+            command = "git log --all --grep='^\\[##{id}\\]' --no-merges --pretty=format:\"%h%x09%an%x09%ad%x09%s\" --date=short"
+            result = `#{command}`
+            result.each_line do |line|
+                line.strip!
+                next if line.empty?
+                commit_id = line.split(' ').first
+                _ = `git merge-base --is-ancestor #{commit_id} HEAD`
+                tag = ($? == 0) ? Paint[" HEAD", :green] : Paint['other', :red]
+                line = "#{tag} #{line}"
+                puts line
+            end
+        else
+            STDERR.puts "Error: no issue found with id #{id}."
+        end
+    end
+
     def call_editor(template)
         file = Tempfile.new('gl')
         contents = ''
@@ -948,16 +979,19 @@ gl - GitLab issue tracking intertwined with Git
 Usage: gl <command> [<args>]
 
 Available issue-related commands:
+
 list          List issues
 todo          List your open issues sorted by due date
 show          Show issue information
 edit          Edit issue description
 start         Start working on an issue
 commit        Commit using an issue, regardless of the current branch
+locate        Locate commits made for an issue
 close         Close an issue
 reopen        Reopen a previously closed issue
 
 Miscellaneous commands:
+
 init          Set up Git hooks
 update        Update issues from GitLab server
 labels        Show available labels
@@ -987,6 +1021,13 @@ Usage: gl show [<issue>]
 
 Show issue information. If no issue is specified, show the current issue as
 denoted by the branch name.
+
+__locate
+Usage: gl locate [<issue>]
+
+List all commits made for an issue, show for each commit if it's reachable from
+HEAD or not. If no issue is specified, locate the current issue as denoted by
+the branch name.
 
 __edit
 Usage: gl edit [<issue>]
