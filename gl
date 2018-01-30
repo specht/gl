@@ -821,7 +821,7 @@ class GitLabIssuesConnectedToGit
                 next if line.empty?
                 commit_id = line.split(' ').first
                 _ = `git merge-base --is-ancestor #{commit_id} HEAD`
-                tag = ($? == 0) ? Paint[" HEAD", :green] : Paint['other', :red]
+                tag = ($? == 0) ? Paint['[HEAD] ', :green] : Paint['[other]', :red]
                 line = "#{tag} #{line}"
                 puts line
             end
