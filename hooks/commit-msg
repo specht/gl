@@ -3,7 +3,7 @@
 message = File::read(ARGV.first)
 unless message.index('Merge branch') == 0 || message =~ /\[#\d+\]/
     puts "[gl] Warning: No issue reference in commit message."
-    print "Continue anyways? [y/n]"
+    print "Continue anyway? [y/n] "
     STDIN.reopen(File.open("/dev/tty", "r"))
     response = STDIN.readline.strip
     unless ['y', 'Y', 'yes', 'YES', 'Yes'].include?(response)
