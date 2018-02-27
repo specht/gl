@@ -471,9 +471,9 @@ class GitLabIssuesConnectedToGit
     end
 
     def current_issue()
-        id = `git branch`.split("\n").select do |x|
+        id = (`git branch`.split("\n").select do |x|
             x.strip[0, 1] == '*'
-        end.first.sub('*', '').strip.split('-').first
+        end.first || '').sub('*', '').strip.split('-').first
         if id =~ /^\d+$/
             id.to_i
         else
